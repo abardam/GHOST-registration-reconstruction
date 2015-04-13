@@ -44,7 +44,7 @@ void read_points_pointcloud(const PointMap& pointMap, cv::Mat& frameData_mmPoint
 void read_points_2Dmap(const PointMap& pointMap, cv::Mat& frameData_mmPoints);
 
 //utility function to load in frames (output: point maps and frame datas)
-void load_frames(const std::vector<std::string>& filepaths, std::vector<PointMap>& pointMaps, std::vector<FrameData>& frameDatas);
+void load_frames(const std::vector<std::string>& filepaths, std::vector<PointMap>& pointMaps, std::vector<FrameData>& frameDatas, bool load_depth = true);
 
 PointMap fill_image_points(const std::vector<cv::Vec3f>& pts, const cv::Mat& cameraMatrix, int width, int height, float voxel_size);
 

@@ -42,7 +42,7 @@ height(mmDepth.rows)
 
 cv::Mat generate_camera_intrinsic(int win_width, int win_height, float fovy){
 	cv::Mat camera_intrinsic = cv::Mat::eye(4, 4, CV_32F);
-	camera_intrinsic.ptr<float>(0)[0] = -win_width / (2 * tan(AI_DEG_TO_RAD((fovy * (win_width / win_height) / 2.)))); //for some strange reason this is inaccurate for non-square aspect ratios
+	camera_intrinsic.ptr<float>(0)[0] = -win_width / (2 * tan(AI_DEG_TO_RAD((fovy * ((win_width+0.0) / win_height) / 2.)))); //for some strange reason this is inaccurate for non-square aspect ratios  //maybe integer problem?
 	camera_intrinsic.ptr<float>(1)[1] = win_height / (2 * tan(AI_DEG_TO_RAD(fovy / 2.)));
 	camera_intrinsic.ptr<float>(0)[2] = win_width / 2 + 0.5;
 	camera_intrinsic.ptr<float>(1)[2] = win_height / 2 + 0.5;
@@ -105,7 +105,7 @@ void read_points_2Dmap(const PointMap& pointMap, cv::Mat& _2Dmap){
 }
 
 
-void load_frames(const std::vector<std::string>& filepaths, std::vector<PointMap>& pointMaps, std::vector<FrameData>& frameDatas){
+void load_frames(const std::vector<std::string>& filepaths, std::vector<PointMap>& pointMaps, std::vector<FrameData>& frameDatas, bool load_depth){
 
 	cv::FileStorage fs;
 
@@ -116,8 +116,6 @@ void load_frames(const std::vector<std::string>& filepaths, std::vector<PointMap
 
 		std::cout << "loading " << *it << std::endl;
 
-		cv::Mat depthMat;
-		fs["depth"] >> depthMat;
 
 		float win_width, win_height, fovy;
 		cv::Mat colorMat, camera_extrinsic, camera_intrinsic;
@@ -130,11 +128,24 @@ void load_frames(const std::vector<std::string>& filepaths, std::vector<PointMap
 		SkeletonNodeHard root;
 		fs["skeleton"] >> root;
 
-
+		int num_pts = 0;
+		cv::Mat depthMat;
 		PointMap pointMap(win_width, win_height);
-		camera_intrinsic = generate_camera_intrinsic(win_width, win_height, fovy);
-		read_depth_image(depthMat, camera_intrinsic, pointMap);
-		FrameData frameData(pointMap.mvPointLocations.size(), depthMat, colorMat, camera_intrinsic, root);
+
+		if (load_depth){
+			fs["depth"] >> depthMat;
+
+			camera_intrinsic = generate_camera_intrinsic(win_width, win_height, fovy);
+			read_depth_image(depthMat, camera_intrinsic, pointMap);
+			num_pts = pointMap.mvPointLocations.size();
+
+		}
+		FrameData frameData(num_pts, depthMat, colorMat, camera_intrinsic, root);
+		if (load_depth){
+
+			read_points_pointcloud(pointMap, frameData.mmPoints);
+			pointMaps.push_back(pointMap);
+		}
 
 		fs["camera_extrinsic"] >> frameData.mmCameraPose;
 
@@ -142,10 +153,6 @@ void load_frames(const std::vector<std::string>& filepaths, std::vector<PointMap
 		//prepare frame data(i.e. calculate normals and matrixify points)
 		cv::Mat mDisplayNormals(win_height, win_width, CV_32FC3, cv::Scalar(0, 0, 0));
 
-		read_points_pointcloud(pointMap, frameData.mmPoints);
-
-
-		pointMaps.push_back(pointMap);
 		frameDatas.push_back(frameData);
 	}
 }

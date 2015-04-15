@@ -2,6 +2,7 @@
 
 #include <opencv2\opencv.hpp>
 #include <AssimpOpenGL.h>
+#include <cv_skeleton.h>
 
 #define vecMul(Mat, Mat2, n, m, outMat) cv::multiply(Mat(cv::Range(n,n+1), cv::Range(0, Mat.cols)), Mat2(cv::Range(m,m+1), cv::Range(0, Mat2.cols)), outMat)
 

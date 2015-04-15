@@ -62,7 +62,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <PreBuildEvent>
-      <Command>copy /y "G:\Visual Studio 2013\CV_cholesky_test\recons_Skeleton_constraints\*.h" "$(CODE_DIR)\ReconsOptimization-x86-vs12\include\"</Command>
+      <Command>mkdir "$(CODE_DIR)\ReconsOptimization-x86-vs12\include\" &amp; copy /y "$(ProjectDir)\*.h" "$(CODE_DIR)\ReconsOptimization-x86-vs12\include\"</Command>
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -79,7 +79,7 @@
       <OptimizeReferences>true</OptimizeReferences>
     </Link>
     <PreBuildEvent>
-      <Command>copy /y "G:\Visual Studio 2013\CV_cholesky_test\recons_Skeleton_constraints\*.h" "$(CODE_DIR)\ReconsOptimization-x86-vs12\include\"</Command>
+      <Command>mkdir "$(CODE_DIR)\ReconsOptimization-x86-vs12\include\" &amp; copy /y "$(ProjectDir)\*.h" "$(CODE_DIR)\ReconsOptimization-x86-vs12\include\"</Command>
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>

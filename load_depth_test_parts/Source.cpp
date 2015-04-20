@@ -326,7 +326,7 @@ int main(int argc, char** argv){
 	std::vector<PointMap> point_maps;
 	std::vector<FrameData> frame_datas;
 
-	load_frames(filenames, point_maps, frame_datas);
+	load_frames(filenames, point_maps, frame_datas, true, false);
 	std::vector<SkeletonNodeHardMap> snhmaps;
 
 	for (int i = 0; i < frame_datas.size(); ++i){

@@ -105,7 +105,7 @@ void read_points_2Dmap(const PointMap& pointMap, cv::Mat& _2Dmap){
 }
 
 
-void load_frames(const std::vector<std::string>& filepaths, std::vector<PointMap>& pointMaps, std::vector<FrameData>& frameDatas, bool load_depth){
+void load_frames(const std::vector<std::string>& filepaths, std::vector<PointMap>& pointMaps, std::vector<FrameData>& frameDatas, bool load_depth, bool load_color){
 
 	cv::FileStorage fs;
 
@@ -117,13 +117,22 @@ void load_frames(const std::vector<std::string>& filepaths, std::vector<PointMap
 		std::cout << "loading " << *it << std::endl;
 
 
-		float win_width, win_height, fovy;
+		float win_width = 0, win_height = 0, fovy;
 		cv::Mat colorMat, camera_extrinsic, camera_intrinsic;
-		fs["color"] >> colorMat;
 
-		fs["camera_intrinsic"]["width"] >> win_width;
-		fs["camera_intrinsic"]["height"] >> win_height;
-		fs["camera_intrinsic"]["fovy"] >> fovy;
+		if (load_color)
+			fs["color"] >> colorMat;
+
+		if (!fs["camera_intrinsic"].empty())
+		{
+			fs["camera_intrinsic"]["width"] >> win_width;
+			fs["camera_intrinsic"]["height"] >> win_height;
+			fs["camera_intrinsic"]["fovy"] >> fovy;
+			camera_intrinsic = generate_camera_intrinsic(win_width, win_height, fovy);
+		}
+		else{
+			fs["camera_intrinsic_mat"] >> camera_intrinsic;
+		}
 
 		SkeletonNodeHard root;
 		fs["skeleton"] >> root;
@@ -135,7 +144,13 @@ void load_frames(const std::vector<std::string>& filepaths, std::vector<PointMap
 		if (load_depth){
 			fs["depth"] >> depthMat;
 
-			camera_intrinsic = generate_camera_intrinsic(win_width, win_height, fovy);
+			if (win_width == 0 || win_height == 0){
+				win_width = depthMat.cols;
+				win_height = depthMat.rows;
+
+				pointMap = PointMap(win_width, win_height);
+			}
+
 			read_depth_image(depthMat, camera_intrinsic, pointMap);
 			num_pts = pointMap.mvPointLocations.size();
 

@@ -98,7 +98,8 @@ void point_to_point_registration(
 	cv::Mat D_n;
 
 	for (int i = 0; i < C.cols; ++i){
-		if (D.ptr<float>(2)[i] < 0 &&
+		//if (D.ptr<float>(2)[i] < 0 && //TODO. figure this shit out
+		if (D.ptr<float>(2)[i] > 0 &&
 			status[i] == 1 &&
 			error[i] < OPTICAL_FLOW_ERROR_THRESHOLD){
 			++point_to_point_matches;

@@ -17,7 +17,8 @@ void calculate_normals(const PointMap& depth_pointmap, const cv::Mat& input_poin
 		
 		const cv::Vec3f pt = depth_pointmap.mvPoints[y*depth_pointmap.width + x];
 
-		if (pt(2) < 0){
+		//if (pt(2) < 0){ //TODO. Figure this shit out
+		if (pt(2) > 0){
 			cv::Vec3f v(0, 0, 0);
 
 			const cv::Vec3f pt1y = depth_pointmap.mvPoints[(y + 1)*depth_pointmap.width + x];

@@ -1,8 +1,11 @@
 #include <fstream>
 
 #include <opencv2\opencv.hpp>
-#include <AssimpCV.h>
+#include <cv_skeleton.h>
 #include "skeletonconstraints.h"
+
+//from assimp
+#define AI_DEG_TO_RAD(x) ((x)*0.0174532925f)
 
 SkeletonNodeHard generateFromReference(const SkeletonNodeHard * const ref, const SkeletonNodeHard * const prev){
 	SkeletonNodeHard snh;
@@ -93,19 +96,25 @@ int main(int argc, char * argv[]){
 		fs["camera_extrinsic"] >> camera_extrinsic;
 		//fs["camera_intrinsic"] >> camera_intrinsic;
 
-		float win_width, win_height;
-		float fovy;
+		if (!fs["camera_intrinsic"].empty()){
 
-		fs["camera_intrinsic"]["width"] >> win_width;
-		fs["camera_intrinsic"]["height"] >> win_height;
-		fs["camera_intrinsic"]["fovy"] >> fovy;
+			float win_width, win_height;
+			float fovy;
 
-		camera_intrinsic = cv::Mat::eye(4, 4, CV_32F);
-		camera_intrinsic.ptr<float>(0)[0] = -win_width / (2 * tan(AI_DEG_TO_RAD((fovy * (win_width / win_height) / 2.)))); //for some strange reason this is inaccurate for non-square aspect ratios
-		camera_intrinsic.ptr<float>(1)[1] = win_height / (2 * tan(AI_DEG_TO_RAD(fovy / 2.)));
-		camera_intrinsic.ptr<float>(0)[2] = win_width / 2 + 0.5;
-		camera_intrinsic.ptr<float>(1)[2] = win_height / 2 + 0.5;
-		//camera_intrinsic.ptr<float>(2)[2] = -1;
+			fs["camera_intrinsic"]["width"] >> win_width;
+			fs["camera_intrinsic"]["height"] >> win_height;
+			fs["camera_intrinsic"]["fovy"] >> fovy;
+
+			camera_intrinsic = cv::Mat::eye(4, 4, CV_32F);
+			camera_intrinsic.ptr<float>(0)[0] = -win_width / (2 * tan(AI_DEG_TO_RAD((fovy * (win_width / win_height) / 2.)))); //for some strange reason this is inaccurate for non-square aspect ratios
+			camera_intrinsic.ptr<float>(1)[1] = win_height / (2 * tan(AI_DEG_TO_RAD(fovy / 2.)));
+			camera_intrinsic.ptr<float>(0)[2] = win_width / 2 + 0.5;
+			camera_intrinsic.ptr<float>(1)[2] = win_height / 2 + 0.5;
+			//camera_intrinsic.ptr<float>(2)[2] = -1;
+		}
+		else{
+			fs["camera_intrinsic_mat"] >> camera_intrinsic;
+		}
 
 		fs["skeleton"] >> root;
 
@@ -127,14 +136,22 @@ int main(int argc, char * argv[]){
 			"Prev: " << std::endl << prevSVD.w << std::endl <<
 			"Ref: " << std::endl << refSVD.w << std::endl;
 
+		cv::Mat depth;
+		fs["depth"] >> depth;
 
-		cv_draw_and_build_skeleton(&gen_root, camera_extrinsic, camera_intrinsic, &snhMap, colorMat);
+		cv::Mat depth_color(depth.rows, depth.cols, CV_8UC3);
+		for (int i = 0; i < depth.rows*depth.cols; ++i){
+			unsigned short z = depth.ptr<float>()[i] * 1000;
+			depth_color.ptr<cv::Vec3b>()[i] = cv::Vec3b(z % 256, (z / 256) % 256, 0xff);
+		}
+
+		cv_draw_and_build_skeleton(&gen_root, camera_extrinsic, camera_intrinsic, &snhMap, depth_color); //change this to colorMat
 		//for (auto it = bpdv.begin(); it != bpdv.end(); ++it){
 		//	cv_draw_volume(*it, colorMat, camera_extrinsic, camera_intrinsic, snhMap);
 		//}
 		snhMap.clear();
 
-		cv::imshow("color", colorMat);
+		cv::imshow("color", depth_color); //change this to colorMat
 
 		//cv::Mat depthMat;
 		//fs["depth"] >> depthMat;

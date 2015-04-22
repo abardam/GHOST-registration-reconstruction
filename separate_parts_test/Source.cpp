@@ -1,6 +1,5 @@
 #include <opencv2\opencv.hpp>
 #include "recons_optimization.h"
-#include "AssimpOpenGL.h"
 
 #define SKELETON_CONSTRAINT_WEIGHT 1
 

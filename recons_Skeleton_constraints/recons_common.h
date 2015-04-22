@@ -1,8 +1,11 @@
 #pragma once
 
 #include <opencv2\opencv.hpp>
-#include <AssimpOpenGL.h>
 #include <cv_skeleton.h>
+
+
+//from assimp
+#define AI_DEG_TO_RAD(x) ((x)*0.0174532925f)
 
 #define vecMul(Mat, Mat2, n, m, outMat) cv::multiply(Mat(cv::Range(n,n+1), cv::Range(0, Mat.cols)), Mat2(cv::Range(m,m+1), cv::Range(0, Mat2.cols)), outMat)
 
@@ -28,6 +31,7 @@ struct FrameData{
 	SkeletonNodeHard mmRoot;
 	int width, height;
 
+	FrameData(){};
 	FrameData(int numPts, const cv::Mat& depthMat, const cv::Mat& colorMat, const cv::Mat& cameraMatrix, const SkeletonNodeHard& root);
 	FrameData(const FrameData&);
 };

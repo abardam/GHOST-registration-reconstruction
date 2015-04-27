@@ -5,20 +5,23 @@
 
 void calculate_normals(const PointMap& depth_pointmap, const cv::Mat& input_points_2D, cv::Mat& normals, cv::Mat& mDisplayNormals){
 
+	cv::Vec3f half(0.5, 0.5, 0.5);
+
 	for (int i = 0; i < input_points_2D.cols; ++i){
 
 		int x = input_points_2D.ptr<float>(0)[i];
 		int y = input_points_2D.ptr<float>(1)[i];
 
 		if (!CLAMP(x, y, depth_pointmap.width, depth_pointmap.height)) {
-			std::cout << "Something went wrong...\n";
+			std::cout << "Something went wrong (calculate_normals; invalid x/y)\n";
 			continue;
 		}
 		
 		const cv::Vec3f pt = depth_pointmap.mvPoints[y*depth_pointmap.width + x];
 
 		//if (pt(2) < 0){ //TODO. Figure this shit out
-		if (pt(2) > 0){
+		//if (pt(2) > 0){
+		if (pt(2) != 0){
 			cv::Vec3f v(0, 0, 0);
 
 			const cv::Vec3f pt1y = depth_pointmap.mvPoints[(y + 1)*depth_pointmap.width + x];
@@ -26,7 +29,8 @@ void calculate_normals(const PointMap& depth_pointmap, const cv::Mat& input_poin
 
 			
 
-			if (pt1y(2) < 0 && pt1x(2) < 0){
+			//if (pt1y(2) < 0 && pt1x(2) < 0){ //TODO. Figure this shit out
+			if (pt1y(2) != 0 && pt1x(2) != 0){
 				v = (pt1y - pt).cross(pt1x - pt);
 
 				if (v(2) == 0){
@@ -41,8 +45,9 @@ void calculate_normals(const PointMap& depth_pointmap, const cv::Mat& input_poin
 				v = cv::normalize(v);
 			}
 
-			if (!mDisplayNormals.empty())
-				mDisplayNormals.ptr<cv::Vec3f>(y)[x] = v;
+			if (!mDisplayNormals.empty()){
+				mDisplayNormals.ptr<cv::Vec3f>(y)[x] = v / 2 + half;
+			}
 
 			normals.ptr<float>(0)[i] = v(0);
 			normals.ptr<float>(1)[i] = v(1);
@@ -80,6 +85,10 @@ void point_to_plane_registration(
 	cv::Mat depth_pointmat(4, depth_pointmap.mvPointLocations.size(), CV_32F);
 	read_points_pointcloud(depth_pointmap, depth_pointmat);
 
+	//lets try not using voxels
+	//it works ok for the whole body but not for individual bps
+	//cv::Mat C = depth_pointmat;
+
 	//iterative part
 	while (true)
 	{
@@ -87,11 +96,15 @@ void point_to_plane_registration(
 		const cv::Mat C_2D = projective_data_association(C, cv::Mat::eye(4, 4, CV_32F), source_cameramatrix);
 
 		cv::Mat D = reproject_depth(C_2D, target_depth, target_cameramatrix);
-		//C = reproject_depth(C_2D, source_depth, source_cameramatrix); // lets try this? trip report: its bad
+		C = reproject_depth(C_2D, source_depth, source_cameramatrix); // lets try this? trip report: its bad UPDATE: actually its ok
 
+		cv::Mat display_normals(source_depth.rows, source_depth.cols, CV_32FC3, cv::Scalar(0, 0, 0));
 
 		cv::Mat normals(4, C.cols, CV_32F);
-		calculate_normals(depth_pointmap, C_2D, normals);
+		calculate_normals(depth_pointmap, C_2D, normals, display_normals);
+
+		cv::imshow("normals", display_normals);
+		cv::waitKey(10);
 
 		int point_to_plane_matches = 0;
 
@@ -100,7 +113,11 @@ void point_to_plane_registration(
 		cv::Mat N_n;
 
 		for (int i = 0; i < C.cols; ++i){
-			if (D.ptr<float>(2)[i] < 0 && normals.ptr<float>(3)[i] == 1
+			//if (D.ptr<float>(2)[i] < 0  //TODO. Figure this shit out
+			//if (D.ptr<float>(2)[i] > 0 
+			if (D.ptr<float>(2)[i] != 0
+				&& C.ptr<float>(2)[i] != 0
+				&& normals.ptr<float>(3)[i] == 1
 				&& !(
 				normals.ptr<float>(0)[i] == 0 &&
 				normals.ptr<float>(1)[i] == 0 &&
@@ -116,8 +133,8 @@ void point_to_plane_registration(
 		}
 
 		if (point_to_plane_matches == 0){
-			A = cv::Mat::zeros(6, 6, CV_32F);
-			b = cv::Mat::zeros(6, 1, CV_32F);
+			A = cv::Mat::zeros(6, 6, CV_64F);
+			b = cv::Mat::zeros(6, 1, CV_64F);
 			return;
 		}
 
@@ -157,7 +174,23 @@ void point_to_plane_registration(
 		//
 		//}
 
-		point_to_plane_linear(source_camerapose_inv * C_n, target_camerapose_inv * D_n, source_camerapose_inv * N_n, A, b);
+		//lets try - EDIT: not so good? what about multiplying the inverse body part transform instead?
+		//point_to_plane_linear(C_n, D_n, N_n, A, b);
+
+		cv::Mat transformed_C = source_camerapose_inv * C_n;
+		cv::Mat transformed_D = target_camerapose_inv * D_n;
+
+		cv::Mat transformed_N = source_camerapose_inv * N_n;
+		for (int i = 0; i < transformed_N.cols; ++i){
+			cv::Vec4f n = transformed_N.col(i);
+			n = normalize(n);
+			transformed_N.ptr<float>(0)[i] = n(0);
+			transformed_N.ptr<float>(1)[i] = n(1);
+			transformed_N.ptr<float>(2)[i] = n(2);
+			transformed_N.ptr<float>(3)[i] = 0;
+		}
+
+		point_to_plane_linear(transformed_C, transformed_D, transformed_N, A, b);
 
 		//voxel view debug
 		//{
@@ -239,7 +272,7 @@ void point_to_plane_linear(const cv::Mat& C, const cv::Mat& D, const cv::Mat& N,
 
 	cv::Mat C2N1, C1N2, C3N2, C2N3, C1N3, C3N1, C2N1_C1N2, C3N2_C2N3, C1N3_C3N1, C4N1, C4N2, C4N3, C1N1, C2N2, C3N3, D1N1, D2N2, D3N3, rest;
 	cv::Mat a_coeff, b_coeff, g_coeff, tx_coeff, ty_coeff, tz_coeff, rest_coeff;
-	float  sum_a_coeff, sum_b_coeff, sum_g_coeff, sum_tx_coeff, sum_ty_coeff, sum_tz_coeff, sum_rest_coeff;
+	float sum_a_coeff, sum_b_coeff, sum_g_coeff, sum_tx_coeff, sum_ty_coeff, sum_tz_coeff, sum_rest_coeff;
 
 	vecMul(C, N, 1, 0, C2N1);
 	vecMul(C, N, 0, 1, C1N2);

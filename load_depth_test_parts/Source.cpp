@@ -8,6 +8,14 @@
 
 #define SKELETON_CONSTRAINT_WEIGHT 3000
 #define NEGATIVE_DEPTH 0 //TODO. figure this out
+//#define CYLINDER_FITTING_THRESHOLD 0.1
+//#define CYLINDER_FITTING_RADIUS_MAX 0.3
+//#define CYLINDER_FITTING_RADIUS_INC 0.05
+//#define VOXEL_SIZE 0.01
+#define CYLINDER_FITTING_THRESHOLD 0.4
+#define CYLINDER_FITTING_RADIUS_MAX 2
+#define CYLINDER_FITTING_RADIUS_INC 0.1
+#define VOXEL_SIZE 0.1
 
 std::vector<cv::Mat> estimate_skeleton(
 	const BodyPartDefinitionVector& bpdv, 
@@ -64,8 +72,8 @@ std::vector<cv::Mat> estimate_skeleton(
 		{
 			cv::Mat _A, _b;
 		
-			point_to_point_registration(source_bodypart_pointmat, source_framedata.mmColor, source_framedata.mmCameraMatrix, get_bodypart_transform(bpdv[i], source_snhmap).inv(),
-				target_framedata.mmColor, target_framedata.mmDepth, target_framedata.mmCameraMatrix, _A, _b);
+			point_to_point_registration(source_bodypart_pointmat, source_framedata.mmColor, source_framedata.mmDepth, source_framedata.mmCameraMatrix, get_bodypart_transform(bpdv[i], source_snhmap).inv(),
+				target_framedata.mmColor, target_framedata.mmDepth, target_framedata.mmCameraMatrix, get_bodypart_transform(bpdv[i], target_snhmap).inv(), _A, _b);
 		
 			cv::add(A, _A, A);
 			cv::add(b, _b, b);
@@ -127,12 +135,16 @@ void estimate_skeleton_and_transform(
 	SkeletonNodeHardMap& source_snhmap,
 	const SkeletonNodeHardMap& target_snhmap,
 	const std::vector<VoxelMatrix>& source_volumes,
-	float voxel_size){
+	float voxel_size,
+	cv::Mat& debug_img = cv::Mat()){
 
 	std::vector<cv::Mat> bodypart_transforms(bpdv.size());
 
 
 	for (int i = 0; i < bpdv.size(); ++i){
+
+		const SkeletonNodeHard * source_node = source_snhmap.find(bpdv[i].mNode1Name)->second;
+		const SkeletonNodeHard * target_node = target_snhmap.find(bpdv[i].mNode1Name)->second;
 
 		cv::Mat source_bodypart_transform = get_bodypart_transform(bpdv[i], source_snhmap);
 		cv::Mat target_bodypart_transform = get_bodypart_transform(bpdv[i], target_snhmap);
@@ -166,40 +178,116 @@ void estimate_skeleton_and_transform(
 		cv::Mat A(6, 6, CV_32F, cv::Scalar(0));
 		cv::Mat b(6, 1, CV_32F, cv::Scalar(0));
 
+
+		cv::Mat source_parent_bodypart_transform_inv = (source_bodypart_transform * source_node->mTransformation.inv()).inv();
+		cv::Mat target_parent_bodypart_transform_inv = (target_bodypart_transform * target_node->mTransformation.inv()).inv();
+
 		//point to plane
 		{
 			cv::Mat _A, _b;
-
+		
 			point_to_plane_registration(source_bodypart_pointmat, source_framedata.mmDepth, source_framedata.mmCameraMatrix, source_bodypart_transform_inv,
 				target_framedata.mmDepth, target_framedata.mmCameraMatrix, 
 				target_bodypart_transform_inv, voxel_size, _A, _b, true);
-
+		
+			//try multiplying the inverse camera pose instead of the body part transform
+			//point_to_plane_registration(source_bodypart_pointmat, source_framedata.mmDepth, source_framedata.mmCameraMatrix, source_framedata.mmCameraPose.inv(),
+			//	target_framedata.mmDepth, target_framedata.mmCameraMatrix,
+			//	target_framedata.mmCameraPose.inv(), voxel_size, _A, _b, true);
+		
+			//try multiplying the inverse body part transform of the PARENT //update: not very good...
+		
+			//point_to_plane_registration(source_bodypart_pointmat, source_framedata.mmDepth, source_framedata.mmCameraMatrix, source_parent_bodypart_transform_inv,
+			//	target_framedata.mmDepth, target_framedata.mmCameraMatrix,
+			//	target_parent_bodypart_transform_inv, voxel_size, _A, _b, true);
+		
 			cv::add(A, _A, A);
 			cv::add(b, _b, b);
+		
+			//debug
+		
+			cv::Mat x;
+		
+			cv::solve(_A, _b, x, cv::DECOMP_CHOLESKY);
+			float energy = cv::norm(A*x - b);
+			cv::Mat transformDelta = cv::Mat::eye(4, 4, CV_32F);
+		
+			transformDelta.ptr<float>(0)[1] = x.ptr<float>(3)[0];
+			transformDelta.ptr<float>(1)[0] = -x.ptr<float>(3)[0];
+			transformDelta.ptr<float>(0)[2] = -x.ptr<float>(5)[0];
+			transformDelta.ptr<float>(2)[0] = x.ptr<float>(5)[0];
+			transformDelta.ptr<float>(1)[2] = x.ptr<float>(4)[0];
+			transformDelta.ptr<float>(2)[1] = -x.ptr<float>(4)[0];
+			transformDelta.ptr<float>(0)[3] = x.ptr<float>(0)[0];
+			transformDelta.ptr<float>(1)[3] = x.ptr<float>(1)[0];
+			transformDelta.ptr<float>(2)[3] = x.ptr<float>(2)[0];
+		
+			std::cout << "point to plane transform: \n" << transformDelta << std::endl;
 		}
-
+		
 		//point to point
 		{
 			cv::Mat _A, _b;
+		
+			point_to_point_registration(source_bodypart_pointmat, source_framedata.mmColor, source_framedata.mmDepth, source_framedata.mmCameraMatrix, source_bodypart_transform_inv,
+				target_framedata.mmColor, target_framedata.mmDepth, target_framedata.mmCameraMatrix, target_bodypart_transform_inv, _A, _b, true);
 
-			point_to_point_registration(source_bodypart_pointmat, source_framedata.mmColor, source_framedata.mmCameraMatrix, source_bodypart_transform_inv,
-				target_framedata.mmColor, target_framedata.mmDepth, target_framedata.mmCameraMatrix, _A, _b, true);
+			//point_to_point_registration(source_bodypart_pointmat, source_framedata.mmColor, source_framedata.mmDepth, source_framedata.mmCameraMatrix, source_framedata.mmCameraPose.inv(),
+			//	target_framedata.mmColor, target_framedata.mmDepth, target_framedata.mmCameraMatrix, target_framedata.mmCameraPose.inv(), _A, _b, true);
 
+			//point_to_point_registration(source_bodypart_pointmat, source_framedata.mmColor, source_framedata.mmDepth, source_framedata.mmCameraMatrix, source_parent_bodypart_transform_inv,
+			//	target_framedata.mmColor, target_framedata.mmDepth, target_framedata.mmCameraMatrix, target_parent_bodypart_transform_inv, _A, _b, true);
+		
 			cv::add(A, _A, A);
 			cv::add(b, _b, b);
+		
+			//debug
+		
+			cv::Mat x;
+		
+			cv::solve(_A, _b, x, cv::DECOMP_CHOLESKY);
+			float energy = cv::norm(A*x - b);
+			cv::Mat transformDelta = cv::Mat::eye(4, 4, CV_32F);
+		
+			transformDelta.ptr<float>(0)[1] = x.ptr<float>(3)[0];
+			transformDelta.ptr<float>(1)[0] = -x.ptr<float>(3)[0];
+			transformDelta.ptr<float>(0)[2] = -x.ptr<float>(5)[0];
+			transformDelta.ptr<float>(2)[0] = x.ptr<float>(5)[0];
+			transformDelta.ptr<float>(1)[2] = x.ptr<float>(4)[0];
+			transformDelta.ptr<float>(2)[1] = -x.ptr<float>(4)[0];
+			transformDelta.ptr<float>(0)[3] = x.ptr<float>(0)[0];
+			transformDelta.ptr<float>(1)[3] = x.ptr<float>(1)[0];
+			transformDelta.ptr<float>(2)[3] = x.ptr<float>(2)[0];
+			std::cout << "point to point transform: \n" << transformDelta << std::endl;
 		}
 
 		//skeleton
 		{
 			cv::Mat _A, _b;
-
-			const SkeletonNodeHard * source_node = source_snhmap.find(bpdv[i].mNode1Name)->second;
-			const SkeletonNodeHard * target_node = target_snhmap.find(bpdv[i].mNode1Name)->second;
-
+		
 			skeleton_constraints_linear(source_node->mTransformation, target_node->mTransformation, 1, 1, _A, _b);
-
+		
 			cv::add(A, SKELETON_CONSTRAINT_WEIGHT * _A, A);
 			cv::add(b, SKELETON_CONSTRAINT_WEIGHT * _b, b);
+		
+			//debug
+		
+			cv::Mat x;
+		
+			cv::solve(_A, _b, x, cv::DECOMP_CHOLESKY);
+			float energy = cv::norm(A*x - b);
+			cv::Mat transformDelta = cv::Mat::eye(4, 4, CV_32F);
+		
+			transformDelta.ptr<float>(0)[1] = x.ptr<float>(3)[0];
+			transformDelta.ptr<float>(1)[0] = -x.ptr<float>(3)[0];
+			transformDelta.ptr<float>(0)[2] = -x.ptr<float>(5)[0];
+			transformDelta.ptr<float>(2)[0] = x.ptr<float>(5)[0];
+			transformDelta.ptr<float>(1)[2] = x.ptr<float>(4)[0];
+			transformDelta.ptr<float>(2)[1] = -x.ptr<float>(4)[0];
+			transformDelta.ptr<float>(0)[3] = x.ptr<float>(0)[0];
+			transformDelta.ptr<float>(1)[3] = x.ptr<float>(1)[0];
+			transformDelta.ptr<float>(2)[3] = x.ptr<float>(2)[0];
+			std::cout << "skeleton transform: \n" << transformDelta << std::endl;
 		}
 
 
@@ -230,13 +318,31 @@ void estimate_skeleton_and_transform(
 			cv::Mat rot = cv::Mat::diag(cv::Mat(scale)) * transformDelta(cv::Range(0, 3), cv::Range(0, 3));
 			rot.copyTo(transformDelta(cv::Range(0, 3), cv::Range(0, 3)));
 		}
+		std::cout << "final transform: \n" << transformDelta << std::endl;
 
-		//SkeletonNodeHard * node = source_snhmap.find(bpdv[i].mNode1Name)->second;
+		SkeletonNodeHard * node = source_snhmap.find(bpdv[i].mNode1Name)->second;
+		SkeletonNodeHard * node_parent = source_snhmap.find(node->mParentName)->second;
+		node->mTransformation = transformDelta * node->mTransformation;
+		cv_draw_and_build_skeleton(node, node_parent->mTempTransformation, source_framedata.mmCameraMatrix, &source_snhmap);
+
 		//node->mTransformation = transformDelta * node->mTransformation;
 		//node->mTempTransformation = transformDelta * node->mTempTransformation;
 		//for (int i = 0; i < node->mChildren.size(); ++i){
 		//	cv_draw_and_build_skeleton(&node->mChildren[i], node->mTempTransformation, source_framedata.mmCameraMatrix, &source_snhmap);
 		//}
+
+		if (!debug_img.empty()){
+
+			cv::Mat debug_img_volumes = debug_img.clone();
+
+			for (int i = 0; i < bpdv.size(); ++i){
+				cv::Vec3b color(bpdv[i].mColor[2] * 255, bpdv[i].mColor[1] * 255, bpdv[i].mColor[0] * 255);
+				voxel_draw_volume(debug_img_volumes, color, get_bodypart_transform(bpdv[i], source_snhmap), source_framedata.mmCameraMatrix, &source_volumes[i], voxel_size);
+			}
+
+			cv::imshow("debug volumes", debug_img_volumes);
+			cv::waitKey(10);
+		}
 	}
 }
 
@@ -269,25 +375,41 @@ SkeletonNodeHard estimate_skeleton(const SkeletonNodeHard * const ref, const Ske
 
 int main(int argc, char** argv){
 
-	float voxel_size = 0.01;
+	float voxel_size = VOXEL_SIZE;
 
 	//experimental
 	std::vector<std::pair<float, float>> volume_sizes;
-	volume_sizes.push_back(std::pair<float, float>(.3, .3));
-	volume_sizes.push_back(std::pair<float, float>(.6, .6));
-	volume_sizes.push_back(std::pair<float, float>(.5, .5));
-	volume_sizes.push_back(std::pair<float, float>(.25, .25));
-	volume_sizes.push_back(std::pair<float, float>(.25, .25));
-	volume_sizes.push_back(std::pair<float, float>(.2, .2));
-	volume_sizes.push_back(std::pair<float, float>(.2, .2));
-	volume_sizes.push_back(std::pair<float, float>(.4, .2));
-	volume_sizes.push_back(std::pair<float, float>(.4, .2));
-	volume_sizes.push_back(std::pair<float, float>(.3, .3));
-	volume_sizes.push_back(std::pair<float, float>(.3, .3));
-	volume_sizes.push_back(std::pair<float, float>(.2, .2));
-	volume_sizes.push_back(std::pair<float, float>(.2, .2));
-	volume_sizes.push_back(std::pair<float, float>(.2, .2));
-	volume_sizes.push_back(std::pair<float, float>(.2, .2));
+	//volume_sizes.push_back(std::pair<float, float>(.3, .3));
+	//volume_sizes.push_back(std::pair<float, float>(.6, .6));
+	//volume_sizes.push_back(std::pair<float, float>(.5, .5));
+	//volume_sizes.push_back(std::pair<float, float>(.25, .25));
+	//volume_sizes.push_back(std::pair<float, float>(.25, .25));
+	//volume_sizes.push_back(std::pair<float, float>(.2, .2));
+	//volume_sizes.push_back(std::pair<float, float>(.2, .2));
+	//volume_sizes.push_back(std::pair<float, float>(.4, .2));
+	//volume_sizes.push_back(std::pair<float, float>(.4, .2));
+	//volume_sizes.push_back(std::pair<float, float>(.3, .3));
+	//volume_sizes.push_back(std::pair<float, float>(.3, .3));
+	//volume_sizes.push_back(std::pair<float, float>(.2, .2));
+	//volume_sizes.push_back(std::pair<float, float>(.2, .2));
+	//volume_sizes.push_back(std::pair<float, float>(.2, .2));
+	//volume_sizes.push_back(std::pair<float, float>(.2, .2));
+
+	volume_sizes.push_back(std::pair<float, float>(VOXEL_SIZE * 50, VOXEL_SIZE * 50));
+	volume_sizes.push_back(std::pair<float, float>(VOXEL_SIZE * 50, VOXEL_SIZE * 50));
+	volume_sizes.push_back(std::pair<float, float>(VOXEL_SIZE * 30, VOXEL_SIZE * 30));
+	volume_sizes.push_back(std::pair<float, float>(VOXEL_SIZE * 30, VOXEL_SIZE * 30));
+	volume_sizes.push_back(std::pair<float, float>(VOXEL_SIZE * 30, VOXEL_SIZE * 30));
+	volume_sizes.push_back(std::pair<float, float>(VOXEL_SIZE * 30, VOXEL_SIZE * 30));
+	volume_sizes.push_back(std::pair<float, float>(VOXEL_SIZE * 30, VOXEL_SIZE * 30));
+	volume_sizes.push_back(std::pair<float, float>(VOXEL_SIZE * 30, VOXEL_SIZE * 30));
+	volume_sizes.push_back(std::pair<float, float>(VOXEL_SIZE * 30, VOXEL_SIZE * 30));
+	volume_sizes.push_back(std::pair<float, float>(VOXEL_SIZE * 30, VOXEL_SIZE * 30));
+	volume_sizes.push_back(std::pair<float, float>(VOXEL_SIZE * 30, VOXEL_SIZE * 30));
+	volume_sizes.push_back(std::pair<float, float>(VOXEL_SIZE * 30, VOXEL_SIZE * 30));
+	volume_sizes.push_back(std::pair<float, float>(VOXEL_SIZE * 30, VOXEL_SIZE * 30));
+	volume_sizes.push_back(std::pair<float, float>(VOXEL_SIZE * 30, VOXEL_SIZE * 30));
+	volume_sizes.push_back(std::pair<float, float>(VOXEL_SIZE * 30, VOXEL_SIZE * 30));
 
 	if (argc <= 1){
 		std::cout << "Please enter directory\n";
@@ -296,8 +418,8 @@ int main(int argc, char** argv){
 
 	std::string video_directory(argv[1]);
 	std::stringstream filenameSS;
-	int startframe = 0;
-	int numframes = 10;
+	int startframe = 4;
+	int numframes = 200;
 	cv::FileStorage fs;
 
 	filenameSS << video_directory << "/bodypartdefinitions.xml.gz";
@@ -361,6 +483,8 @@ int main(int argc, char** argv){
 	VoxelSetMap voxelmap;
 	std::vector<Cylinder> cylinders;
 
+	bool first_frame = true;
+
 	while (curr_frame < filenames.size()){
 
 
@@ -374,11 +498,11 @@ int main(int argc, char** argv){
 
 		load_frames(filename_1frame, pointmap_1frame, framedata_1frame);
 
-		for (int i = 0; i < framedata_1frame[0].mmDepth.rows*framedata_1frame[0].mmDepth.cols; ++i){
-			if (framedata_1frame[0].mmDepth.ptr<float>()[i] == 0){
-				framedata_1frame[0].mmDepth.ptr<float>()[i] = NEGATIVE_DEPTH? -10 : 10;
-			}
-		}
+		//for (int i = 0; i < framedata_1frame[0].mmDepth.rows*framedata_1frame[0].mmDepth.cols; ++i){
+		//	if (framedata_1frame[0].mmDepth.ptr<float>()[i] == 0){
+		//		framedata_1frame[0].mmDepth.ptr<float>()[i] = NEGATIVE_DEPTH? -10 : 10;
+		//	}
+		//}
 
 		SkeletonNodeHardMap snhmap_currframe;
 		cv::Mat test_img = framedata_1frame[0].mmColor.clone();
@@ -389,7 +513,8 @@ int main(int argc, char** argv){
 
 
 
-		if (curr_frame == 0){
+		if (first_frame){
+			first_frame = false;
 			gen_root = framedata_1frame[0].mmRoot;
 
 			PointMap pointMap(framedata_1frame[0].width, framedata_1frame[0].height);
@@ -410,7 +535,8 @@ int main(int argc, char** argv){
 			float width = framedata_1frame[0].mmDepth.cols;
 			float height = framedata_1frame[0].mmDepth.rows;
 
-			cylinder_fitting(bpdv, snhmap_currframe, pointmat, framedata_1frame[0].mmCameraPose, cylinders, &framedata_1frame[0].mmCameraMatrix, &width, &height);
+			cylinder_fitting(bpdv, snhmap_currframe, pointmat, framedata_1frame[0].mmCameraPose, cylinders, CYLINDER_FITTING_RADIUS_INC, CYLINDER_FITTING_RADIUS_MAX, CYLINDER_FITTING_THRESHOLD,
+				&framedata_1frame[0].mmCameraMatrix, &width, &height);
 			init_voxel_set(bpdv, snhmap_currframe, cylinders, framedata_1frame[0].mmCameraPose, volumes, volume_sizes, voxelmap, voxel_size);
 
 			TSDF_array.reserve(volumes.size());
@@ -435,7 +561,7 @@ int main(int argc, char** argv){
 			//	curr_snhmap.find(bpdv[i].mNode1Name)->second->mTransformation = bodypart_transforms[i] * curr_snhmap.find(bpdv[i].mNode1Name)->second->mTransformation;
 			//}
 
-			estimate_skeleton_and_transform(bpdv, prev_framedata, framedata_1frame[0], curr_snhmap, snhmap_currframe, volumes, voxel_size);
+			estimate_skeleton_and_transform(bpdv, prev_framedata, framedata_1frame[0], curr_snhmap, snhmap_currframe, volumes, voxel_size, framedata_1frame[0].mmColor);
 		}
 
 		cv::Mat skeleton_image = framedata_1frame[0].mmColor.clone();

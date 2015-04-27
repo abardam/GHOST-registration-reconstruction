@@ -3,24 +3,27 @@
 
 void point_to_point_registration(
 	const cv::Mat& source_pointmat, 
-	const cv::Mat& source_color, 
+	const cv::Mat& source_color,
+	const cv::Mat& source_depth,
 	const cv::Mat& source_cameramatrix, 
 	const cv::Mat& source_camerapose_inv,
 	const cv::Mat& target_color, 
 	const cv::Mat& target_depth, 
-	const cv::Mat& target_cameramatrix, 
+	const cv::Mat& target_cameramatrix,
+	const cv::Mat& target_camerapose_inv,
 	cv::Mat& A, cv::Mat& b,
 	bool verbose){
 
 	cv::Mat C = source_pointmat.clone();
+	int N = C.cols;
 	//cv::Mat C = current.clone();
 
-	cv::Mat C_2D = projective_data_association(C, cv::Mat::eye(4, 4, CV_32F), source_cameramatrix);
-	std::vector<unsigned char> status(C_2D.cols);
-	std::vector<float> error(C_2D.cols);
+	cv::Mat C_2D_t = projective_data_association(C, cv::Mat::eye(4, 4, CV_32F), source_cameramatrix).t();
+	std::vector<unsigned char> status(N);
+	std::vector<float> error(N);
 
-	cv::Mat C_2D_r = C_2D.reshape(2, 1);
-	cv::Mat D_2D_r(1, C_2D.cols, CV_32FC2);
+	cv::Mat C_2D_r = C_2D_t.reshape(2, N);
+	cv::Mat D_2D_r(1, N, CV_32FC2);
 
 	cv::Mat sourceImage, targetImage;
 	cv::cvtColor(source_color, sourceImage, CV_BGR2GRAY);
@@ -28,70 +31,78 @@ void point_to_point_registration(
 
 	cv::calcOpticalFlowPyrLK(sourceImage, targetImage, C_2D_r, D_2D_r, status, error);
 
-	cv::Mat D_2D = D_2D_r.reshape(1, 2);
+	cv::Mat D_2D = D_2D_r.reshape(1, N).t();
 
 	cv::Mat D = reproject_depth(D_2D, target_depth, target_cameramatrix);
 
 	//debug
-	//cv::Mat s(mDisplay.rows, mDisplay.cols, CV_8UC3, cv::Scalar(0, 0, 0));
-	//for (int i = 0; i < C.cols; ++i){
-	//	float depth = C.ptr<float>(2)[i];
-	//	cv::Mat projectedPt(4, 1, CV_32F);
-	//	projectedPt.ptr<float>(0)[0] = C.ptr<float>(0)[i] / depth;
-	//	projectedPt.ptr<float>(1)[0] = C.ptr<float>(1)[i] / depth;
-	//	projectedPt.ptr<float>(2)[0] = 1;
-	//	projectedPt.ptr<float>(3)[0] = 1;
-	//
-	//	cv::Mat depthPt = frameDatas[frame].mmCameraMatrix * projectedPt;
-	//
-	//	int x = depthPt.ptr<float>(0)[0];
-	//	int y = depthPt.ptr<float>(1)[0];
-	//
-	//	if (x >= 0 && x < mDisplay.cols&&y >= 0 && y < mDisplay.rows)
-	//		s.ptr<cv::Vec3b>(y)[x] = cv::Vec3b(0xff, 0, 0);
-	//}
-	//
-	//
-	//cv::imshow("1", s);
-	//cv::waitKey();
-	//
-	//
-	//for (int i = 0; i < D.cols; ++i){
-	//	float depth = D.ptr<float>(2)[i];
-	//	cv::Mat projectedPt(4, 1, CV_32F);
-	//	projectedPt.ptr<float>(0)[0] = D.ptr<float>(0)[i] / depth;
-	//	projectedPt.ptr<float>(1)[0] = D.ptr<float>(1)[i] / depth;
-	//	projectedPt.ptr<float>(2)[0] = 1;
-	//	projectedPt.ptr<float>(3)[0] = 1;
-	//
-	//	cv::Mat depthPt = frameDatas[frame - 1].mmCameraMatrix * projectedPt;
-	//
-	//	int x = depthPt.ptr<float>(0)[0];
-	//	int y = depthPt.ptr<float>(1)[0];
-	//
-	//	if (x >= 0 && x < mDisplay.cols&&y >= 0 && y < mDisplay.rows)
-	//		s.ptr<cv::Vec3b>(y)[x] = cv::Vec3b(0, 0xff, 0);
-	//}
-	//
-	//
-	//cv::imshow("1", s);
-	//cv::waitKey();
-
+#if 0
+	cv::Mat s(source_color.rows, source_color.cols, CV_8UC3, cv::Scalar(0, 0, 0));
+	for (int i = 0; i < C.cols; ++i){
+		float depth = C.ptr<float>(2)[i];
+		cv::Mat projectedPt(4, 1, CV_32F);
+		projectedPt.ptr<float>(0)[0] = C.ptr<float>(0)[i] / depth;
+		projectedPt.ptr<float>(1)[0] = C.ptr<float>(1)[i] / depth;
+		projectedPt.ptr<float>(2)[0] = 1;
+		projectedPt.ptr<float>(3)[0] = 1;
+	
+		cv::Mat depthPt = source_cameramatrix * projectedPt;
+	
+		int x = depthPt.ptr<float>(0)[0];
+		int y = depthPt.ptr<float>(1)[0];
+	
+		if (x >= 0 && x < source_color.cols&&y >= 0 && y < source_color.rows)
+			s.ptr<cv::Vec3b>(y)[x] = cv::Vec3b(0xff, 0, 0);
+	}
+	
+	
+	cv::imshow("1", s);
+	cv::waitKey();
+	
+	
+	for (int i = 0; i < D.cols; ++i){
+		float depth = D.ptr<float>(2)[i];
+		cv::Mat projectedPt(4, 1, CV_32F);
+		projectedPt.ptr<float>(0)[0] = D.ptr<float>(0)[i] / depth;
+		projectedPt.ptr<float>(1)[0] = D.ptr<float>(1)[i] / depth;
+		projectedPt.ptr<float>(2)[0] = 1;
+		projectedPt.ptr<float>(3)[0] = 1;
+	
+		cv::Mat depthPt = target_cameramatrix * projectedPt;
+	
+		int x = depthPt.ptr<float>(0)[0];
+		int y = depthPt.ptr<float>(1)[0];
+	
+		if (x >= 0 && x < source_color.cols&&y >= 0 && y < source_color.rows)
+			s.ptr<cv::Vec3b>(y)[x] = cv::Vec3b(0, 0xff, 0);
+	}
+	
+	
+	cv::imshow("1", s);
+	cv::waitKey();
+#endif
 	//debug
-	//cv::Mat s = frameDatas[frame].mmColor.clone();
-	//for (int i = 0; i < C_2D_v.size(); i += 25){
-	//	cv::circle(s, C_2D_v[i], 2, cv::Scalar(0, 0xff, 0xff), -1);
-	//}
-	//cv::imshow("1", s);
-	//cv::waitKey();
-	//
-	//s = frameDatas[frame - 1].mmColor.clone();
-	//for (int i = 0; i < D_2D_v.size(); i += 25){
-	//	cv::circle(s, D_2D_v[i], 2, cv::Scalar(0, 0xff, 0xff), -1);
-	//}
-	//cv::imshow("1", s);
-	//cv::waitKey();
+#if 0
+	{
+		s = source_color.clone();
+		for (int i = 0; i < N; i += 1){
+			cv::Point pt = C_2D_r.ptr<cv::Vec2f>()[i];
+			cv::circle(s, pt, 1, cv::Scalar(0, 0xff, 0xff), -1);
+		}
+		cv::imshow("1", s);
+		cv::waitKey();
 
+		s = target_color.clone();
+		for (int i = 0; i < N; i += 1){
+			cv::Point pt = D_2D_r.ptr<cv::Vec2f>()[i];
+			cv::circle(s, pt, 1, cv::Scalar(0xff, 0, 0xff), -1);
+		}
+		cv::imshow("1", s);
+		cv::waitKey();
+	}
+#endif
+
+	C = reproject_depth(C_2D_t.t(), source_depth, source_cameramatrix); // lets try this? trip report: its bad UPDATE: actually its ok
 	int point_to_point_matches = 0;
 
 	cv::Mat C_n;
@@ -99,7 +110,9 @@ void point_to_point_registration(
 
 	for (int i = 0; i < C.cols; ++i){
 		//if (D.ptr<float>(2)[i] < 0 && //TODO. figure this shit out
-		if (D.ptr<float>(2)[i] > 0 &&
+		//if (D.ptr<float>(2)[i] > 0 &&
+		if (D.ptr<float>(2)[i] != 0 &&
+			C.ptr<float>(2)[i] != 0 &&
 			status[i] == 1 &&
 			error[i] < OPTICAL_FLOW_ERROR_THRESHOLD){
 			++point_to_point_matches;
@@ -119,7 +132,7 @@ void point_to_point_registration(
 
 	C_n = C_n.reshape(0, point_to_point_matches).t();
 	D_n = D_n.reshape(0, point_to_point_matches).t();
-	point_to_point_linear(source_camerapose_inv * C_n, source_camerapose_inv * D_n, A, b);
+	point_to_point_linear(source_camerapose_inv * C_n, target_camerapose_inv * D_n, A, b);
 
 }
 

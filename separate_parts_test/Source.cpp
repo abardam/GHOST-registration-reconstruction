@@ -83,11 +83,13 @@ int main(int argc, char** argv){
 
 					point_to_point_registration(frameDatas[sourceFrame].mmPoints,
 						frameDatas[sourceFrame].mmColor,
+						frameDatas[sourceFrame].mmDepth,
 						frameDatas[sourceFrame].mmCameraMatrix,
 						cv::Mat::eye(4,4,CV_32F),
 						frameDatas[targetFrame].mmColor,
 						frameDatas[targetFrame].mmDepth,
 						frameDatas[targetFrame].mmCameraMatrix,
+						cv::Mat::eye(4, 4, CV_32F),
 						_A, _b);
 
 					cv::add(_A, A, A);

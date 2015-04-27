@@ -15,7 +15,7 @@ int main(int argc, char** argv){
 	}
 
 	bool point_to_point = true;
-	bool point_to_plane = true;
+	bool point_to_plane = false;
 	bool skeleton = false;
 
 	std::string video_directory(argv[1]);
@@ -82,11 +82,13 @@ int main(int argc, char** argv){
 
 					point_to_point_registration(current,
 						frameDatas[sourceFrame].mmColor,
+						frameDatas[sourceFrame].mmDepth,
 						frameDatas[sourceFrame].mmCameraMatrix,
 						frameDatas[0].mmCameraPose.inv(),
 						frameDatas[targetFrame].mmColor,
 						frameDatas[targetFrame].mmDepth,
 						frameDatas[targetFrame].mmCameraMatrix,
+						frameDatas[targetFrame].mmCameraPose.inv(),
 						_A, _b);
 
 					cv::add(_A, A, A);

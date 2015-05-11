@@ -3,6 +3,8 @@
 #include <cv_pointmat_common.h>
 #include <cv_draw_common.h>
 
+#define MAXIMUM_DEPTH_DIFFERENCE 0.1
+
 void calculate_normals(const PointMap& depth_pointmap, const cv::Mat& input_points_2D, cv::Mat& normals, cv::Mat& mDisplayNormals){
 
 	cv::Vec3f half(0.5, 0.5, 0.5);
@@ -96,6 +98,7 @@ void point_to_plane_registration(
 		const cv::Mat C_2D = projective_data_association(C, cv::Mat::eye(4, 4, CV_32F), source_cameramatrix);
 
 		cv::Mat D = reproject_depth(C_2D, target_depth, target_cameramatrix);
+
 		C = reproject_depth(C_2D, source_depth, source_cameramatrix); // lets try this? trip report: its bad UPDATE: actually its ok
 
 		cv::Mat display_normals(source_depth.rows, source_depth.cols, CV_32FC3, cv::Scalar(0, 0, 0));
@@ -117,6 +120,8 @@ void point_to_plane_registration(
 			//if (D.ptr<float>(2)[i] > 0 
 			if (D.ptr<float>(2)[i] != 0
 				&& C.ptr<float>(2)[i] != 0
+				&& abs(D.ptr<float>(2)[i] - C.ptr<float>(2)[i]) < MAXIMUM_DEPTH_DIFFERENCE //band-aid solution for wild depth differences; TODO. fix
+				&& abs(source_pointmat.ptr<float>(2)[i] - C.ptr<float>(2)[i]) < MAXIMUM_DEPTH_DIFFERENCE //band-aid solution for wild depth differences; TODO. fix
 				&& normals.ptr<float>(3)[i] == 1
 				&& !(
 				normals.ptr<float>(0)[i] == 0 &&
@@ -144,43 +149,30 @@ void point_to_plane_registration(
 		D_n = D_n.reshape(0, point_to_plane_matches).t();
 		N_n = N_n.reshape(0, point_to_plane_matches).t();
 
-
-
 		float energy;
 
 		cv::Mat zerow = cv::Mat::zeros(1, N_n.cols, CV_32F);
 		zerow.copyTo(N_n(cv::Range(3, 4), cv::Range(0, N_n.cols)));
-
-		//for (int i = 0; i < N_n.cols; ++i){
-		//	float nrm = cv::norm(N_n(cv::Range(0, 3), cv::Range(i, i + 1)));
-		//
-		//	N_n.ptr<float>(0)[i] /= nrm;
-		//	N_n.ptr<float>(1)[i] /= nrm;
-		//	N_n.ptr<float>(2)[i] /= nrm;
-		//}
-
-		//debug
-		//{
-		//	cv::Mat testC = source_camerapose_inv * C_n;
-		//	cv::Mat testD = source_camerapose_inv * D_n;
-		//	cv::Mat testN = source_camerapose_inv * N_n;
-		//
-		//
-		//	cv::Mat test_im(source_height, source_width, CV_8UC3, cv::Scalar(0, 0, 0));
-		//	draw_points_on_image(C_n, source_cameramatrix, test_im, cv::Vec3b(128, 0, 0));
-		//
-		//	draw_points_on_image(D_n, source_cameramatrix, test_im, cv::Vec3b(0, 0, 128));
-		//
-		//
-		//}
-
-		//lets try - EDIT: not so good? what about multiplying the inverse body part transform instead?
-		//point_to_plane_linear(C_n, D_n, N_n, A, b);
-
+		
 		cv::Mat transformed_C = source_camerapose_inv * C_n;
 		cv::Mat transformed_D = target_camerapose_inv * D_n;
-
 		cv::Mat transformed_N = source_camerapose_inv * N_n;
+
+		//cv::Mat transformed_C = C_n;
+		//cv::Mat transformed_D = D_n;
+		//cv::Mat transformed_N = N_n;
+
+		//{
+		//	std::cout << "debug ptmat draw AFTER TRANSFORMING; green is transformed_C, red is Transformed_D\n";
+		//	std::vector<cv::Mat> ptmats;
+		//	ptmats.push_back(transformed_C);
+		//	ptmats.push_back(transformed_D);
+		//	std::vector<cv::Vec3b> colors;
+		//	colors.push_back(cv::Vec3b(0, 0xff, 0));
+		//	colors.push_back(cv::Vec3b(0, 0, 0xff));
+		//	display_pointmat("debug ptmat", target_depth.cols, target_depth.rows, target_cameramatrix, cv::Mat::eye(4, 4, CV_32F), ptmats, colors);
+		//}
+
 		for (int i = 0; i < transformed_N.cols; ++i){
 			cv::Vec4f n = transformed_N.col(i);
 			n = normalize(n);
@@ -192,75 +184,34 @@ void point_to_plane_registration(
 
 		point_to_plane_linear(transformed_C, transformed_D, transformed_N, A, b);
 
-		//voxel view debug
 		//{
-		//	cv::Mat voxel_im(600, 600, CV_8UC3, cv::Scalar(0, 0, 0));
 		//
-		//	cv::Mat zoom_trans = cv::Mat::eye(4, 4, CV_32F);
-		//	cv::Mat::diag(cv::Mat(cv::Vec3f(0.1, 0.1, 0.1))).copyTo(zoom_trans(cv::Range(0, 3), cv::Range(0, 3)));
-		//	zoom_trans.ptr<float>(2)[3] = -2;
+		//	cv::Mat x;
+		//	cv::solve(A, b, x, cv::DECOMP_CHOLESKY);
+		//	cv::Mat transformDelta = cv::Mat::eye(4, 4, CV_32F);
 		//
-		//	cv::Mat voxel_C_0 = source_camerapose_inv * C_n;
-		//	cv::Mat voxel_C_zoom = zoom_trans * voxel_C_0;
-		//	cv::Mat voxel_C = source_cameramatrix * voxel_C_zoom;
-		//	divide_pointmat_by_z(voxel_C);
+		//	transformDelta.ptr<float>(0)[1] = x.ptr<float>(3)[0];
+		//	transformDelta.ptr<float>(1)[0] = -x.ptr<float>(3)[0];
+		//	transformDelta.ptr<float>(0)[2] = -x.ptr<float>(5)[0];
+		//	transformDelta.ptr<float>(2)[0] = x.ptr<float>(5)[0];
+		//	transformDelta.ptr<float>(1)[2] = x.ptr<float>(4)[0];
+		//	transformDelta.ptr<float>(2)[1] = -x.ptr<float>(4)[0];
+		//	transformDelta.ptr<float>(0)[3] = x.ptr<float>(0)[0];
+		//	transformDelta.ptr<float>(1)[3] = x.ptr<float>(1)[0];
+		//	transformDelta.ptr<float>(2)[3] = x.ptr<float>(2)[0];
 		//
-		//	draw_pointmat_on_image(voxel_im, voxel_C, cv::Vec3b(0, 0, 255));
-		//
-		//
-		//	cv::Mat voxel_D_0 = target_camerapose_inv * D_n;
-		//	cv::Mat voxel_D_zoom = zoom_trans * voxel_D_0;
-		//	cv::Mat voxel_D = source_cameramatrix * voxel_D_zoom;
-		//	divide_pointmat_by_z(voxel_D);
-		//
-		//	draw_pointmat_on_image(voxel_im, voxel_D, cv::Vec3b(0, 255, 0));
-		//
-		//	cv::imshow("voxels", voxel_im);
-		//	cv::waitKey();
+		//	std::cout << "debug ptmat draw AFTER APPLYING THE TRANSFORMATION; red is transformed_D, green is transformDelta * transformed_C\n";
+		//	std::vector<cv::Mat> ptmats;
+		//	ptmats.push_back(transformDelta * transformed_C);
+		//	ptmats.push_back(transformed_D);
+		//	std::vector<cv::Vec3b> colors;
+		//	colors.push_back(cv::Vec3b(0, 0xff, 0));
+		//	colors.push_back(cv::Vec3b(0, 0, 0xff));
+		//	display_pointmat("debug ptmat", target_depth.cols, target_depth.rows, target_cameramatrix, cv::Mat::eye(4, 4, CV_32F), ptmats, colors);
 		//}
 
+		
 		break;
-
-		//cv::Mat transformDelta = point_to_plane_optimize(C1_zeroes, D, frameDatas[frame].mmNormals, &energy);
-		//
-		//cv::Mat E = transformDelta * C1;
-		//
-		//cv::Mat difference = E - D;
-		//
-		//float nrm = 0;
-		//for (int i = 0; i < E.cols; ++i){
-		//	nrm += cv::norm(difference(cv::Range(0, 3), cv::Range(i, i + 1)));
-		//}
-		//
-		//std::cout << "energy: " << energy << std::endl 
-		//	<< "SAD: " << nrm << std::endl;
-		//
-		//for (int i = 0; i < E.cols; ++i){
-		//	float depth = E.ptr<float>(2)[i];
-		//	cv::Mat projectedPt(4, 1, CV_32F);
-		//	projectedPt.ptr<float>(0)[0] = E.ptr<float>(0)[i] / depth;
-		//	projectedPt.ptr<float>(1)[0] = E.ptr<float>(1)[i] / depth;
-		//	projectedPt.ptr<float>(2)[0] = 1;
-		//	projectedPt.ptr<float>(3)[0] = 1;
-		//
-		//	cv::Mat depthPt = frameDatas[frame].mmCameraMatrix * projectedPt;
-		//
-		//	int x = depthPt.ptr<float>(0)[0];
-		//	int y = depthPt.ptr<float>(1)[0];
-		//
-		//	if (x >= 0 && x < win_width&&y >= 0 && y < win_height)
-		//		mDisplayCopy.ptr<cv::Vec4b>(y)[x] = cv::Vec4b(0, 0, 0xff, 0xff);
-		//}
-		//
-		//
-		//cv::imshow("display", mDisplayCopy);
-		//char inp = cv::waitKey();
-		//
-		//if (inp == 'n'){
-		//	break;
-		//} 
-		//
-		//C1 = E.clone();
 	}
 }
 

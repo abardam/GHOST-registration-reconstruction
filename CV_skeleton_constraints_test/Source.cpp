@@ -120,7 +120,10 @@ int main(int argc, char * argv[]){
 
 		SkeletonNodeHard gen_root;
 		if (i>0){
-			gen_root = generateFromReference(&root, &prevRoot);
+			for (int i = 0; i < 1; ++i){
+				gen_root = generateFromReference(&root, &prevRoot);
+				prevRoot = gen_root;
+			}
 		}
 		else{
 			gen_root = root;
@@ -145,7 +148,7 @@ int main(int argc, char * argv[]){
 			depth_color.ptr<cv::Vec3b>()[i] = cv::Vec3b(z % 256, (z / 256) % 256, 0xff);
 		}
 
-		cv_draw_and_build_skeleton(&gen_root, camera_extrinsic, camera_intrinsic, &snhMap, depth_color); //change this to colorMat
+		cv_draw_and_build_skeleton(&gen_root, cv::Mat::eye(4,4,CV_32F), camera_intrinsic, camera_extrinsic, &snhMap, depth_color); //change this to colorMat
 		//for (auto it = bpdv.begin(); it != bpdv.end(); ++it){
 		//	cv_draw_volume(*it, colorMat, camera_extrinsic, camera_intrinsic, snhMap);
 		//}

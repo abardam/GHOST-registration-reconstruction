@@ -1,3 +1,4 @@
+#include <Windows.h>
 #include <opencv2\opencv.hpp>
 #include <cv_skeleton.h>
 #include <recons_optimization.h>
@@ -7,7 +8,7 @@
 //debug
 #include <cv_draw_common.h>
 
-#define SKELETON_CONSTRAINT_WEIGHT 3000
+#define SKELETON_CONSTRAINT_WEIGHT 1500
 #define NEGATIVE_DEPTH 0 //TODO. figure this out
 
 //KINECT
@@ -159,272 +160,291 @@ void estimate_skeleton_and_transform(
 
 	std::stringstream ss;
 
-	for (int i = 0; i < bpdv.size(); ++i){
+		for (int i = 0; i < bpdv.size(); ++i){
 
-		ss.str("");
-		cv::FileStorage fs;
-		ss << "LDTP-debug/debug-frame" << debug_frame << "-bp" << i << ".yml";
-		fs.open(ss.str(), cv::FileStorage::WRITE);
-
-		const SkeletonNodeHard * source_node = source_snhmap.find(bpdv[i].mNode1Name)->second;
-		const SkeletonNodeHard * target_node = target_snhmap.find(bpdv[i].mNode1Name)->second;
-
-		cv::Mat source_bodypart_transform = get_bodypart_transform(bpdv[i], source_snhmap, source_framedata.mmCameraPose);
-		cv::Mat target_bodypart_transform = get_bodypart_transform(bpdv[i], target_snhmap, target_framedata.mmCameraPose);
-
-		cv::Mat source_bodypart_transform_inv = source_bodypart_transform.inv();
-		cv::Mat target_bodypart_transform_inv = target_bodypart_transform.inv();
-
-		cv::Mat source_screen_transform = source_bodypart_transform * get_voxel_transform(source_volumes[i].width, source_volumes[i].height, source_volumes[i].depth, voxel_size);
-
-		cv::Mat source_bodypart_pointmat;
-		{
-			std::vector<cv::Vec4f> source_points;
-			for (int j = 0; j < source_volumes[i].voxel_data.cols; ++j){
-				if (source_volumes[i].voxel_data.ptr<cv::Vec4b>()[j](3) == 0xff){
-					source_points.push_back(cv::Vec4f(
-						source_volumes[i].voxel_coords.ptr<float>(0)[j],
-						source_volumes[i].voxel_coords.ptr<float>(1)[j],
-						source_volumes[i].voxel_coords.ptr<float>(2)[j],
-						1
-						));
-				}
-			}
-			cv::Mat source_bodypart_pointmat_r(1, source_points.size(), CV_32FC4, source_points.data());
-			source_bodypart_pointmat = source_bodypart_pointmat_r.reshape(1, source_bodypart_pointmat_r.cols).t();
-
-			//convert to screen coordinates
-			source_bodypart_pointmat = source_screen_transform * source_bodypart_pointmat;
-		}
-
-
-		cv::Mat A(6, 6, CV_64F, cv::Scalar(0));
-		cv::Mat b(6, 1, CV_64F, cv::Scalar(0));
-
-
-		//cv::Mat source_parent_bodypart_transform_inv = (source_bodypart_transform * source_node->mTransformation.inv()).inv();
-		//cv::Mat target_parent_bodypart_transform_inv = (target_bodypart_transform * target_node->mTransformation.inv()).inv();
-
-		//point to plane
-		{
-			cv::Mat _A, _b;
-			
-			if (false){
-				point_to_plane_registration(source_bodypart_pointmat, source_framedata.mmDepth, source_framedata.mmCameraMatrix, source_bodypart_transform_inv,
-					target_framedata.mmDepth, target_framedata.mmCameraMatrix, 
-					target_bodypart_transform_inv, voxel_size, _A, _b, true);
-			}
-			else{
-				//try multiplying the inverse camera pose instead of the body part transform
-				point_to_plane_registration(source_bodypart_pointmat, source_framedata.mmDepth, source_framedata.mmCameraMatrix, source_framedata.mmCameraPose.inv(),
-					target_framedata.mmDepth, target_framedata.mmCameraMatrix,
-					target_framedata.mmCameraPose.inv(), voxel_size, _A, _b, true);
-			}
-			//try multiplying the inverse body part transform of the PARENT //update: not very good...
-		
-			//point_to_plane_registration(source_bodypart_pointmat, source_framedata.mmDepth, source_framedata.mmCameraMatrix, source_parent_bodypart_transform_inv,
-			//	target_framedata.mmDepth, target_framedata.mmCameraMatrix,
-			//	target_parent_bodypart_transform_inv, voxel_size, _A, _b, true);
-			
-			cv::Mat A64, b64;
-			_A.convertTo(A64, CV_64F);
-			_b.convertTo(b64, CV_64F);
-		
-			cv::add(A, A64, A);
-			cv::add(b, b64, b);
-		
-			//debug
-		
-			cv::Mat x;
-		
-			cv::solve(A64, b64, x, cv::DECOMP_CHOLESKY);
-			float energy = cv::norm(A*x - b);
-			cv::Mat transformDelta = cv::Mat::eye(4, 4, CV_32F);
-		
-			transformDelta.ptr<float>(0)[1] = x.ptr<double>(3)[0];
-			transformDelta.ptr<float>(1)[0] = -x.ptr<double>(3)[0];
-			transformDelta.ptr<float>(0)[2] = -x.ptr<double>(5)[0];
-			transformDelta.ptr<float>(2)[0] = x.ptr<double>(5)[0];
-			transformDelta.ptr<float>(1)[2] = x.ptr<double>(4)[0];
-			transformDelta.ptr<float>(2)[1] = -x.ptr<double>(4)[0];
-			transformDelta.ptr<float>(0)[3] = x.ptr<double>(0)[0];
-			transformDelta.ptr<float>(1)[3] = x.ptr<double>(1)[0];
-			transformDelta.ptr<float>(2)[3] = x.ptr<double>(2)[0];
-		
-			std::cout << "point to plane transform: \n" << transformDelta << std::endl;
-		
-			fs << "Point_to_plane" << "{"
-				<< "A" << A64
-				<< "b" << b64
-				<< "x" << x
-				<< "transform" << transformDelta
-				<< "}";
-
-		}
-		
-		//point to point
-		{
-			cv::Mat _A, _b;
-		
-			if (false){
-				point_to_point_registration(source_bodypart_pointmat, source_framedata.mmColor, source_framedata.mmDepth, source_framedata.mmCameraMatrix, source_bodypart_transform_inv,
-					target_framedata.mmColor, target_framedata.mmDepth, target_framedata.mmCameraMatrix, target_bodypart_transform_inv, _A, _b, true);
-			}
-			else{
-				point_to_point_registration(source_bodypart_pointmat, source_framedata.mmColor, source_framedata.mmDepth, source_framedata.mmCameraMatrix, source_framedata.mmCameraPose.inv(),
-					target_framedata.mmColor, target_framedata.mmDepth, target_framedata.mmCameraMatrix, target_framedata.mmCameraPose.inv(), _A, _b, true);
-			}
-			//point_to_point_registration(source_bodypart_pointmat, source_framedata.mmColor, source_framedata.mmDepth, source_framedata.mmCameraMatrix, source_parent_bodypart_transform_inv,
-			//	target_framedata.mmColor, target_framedata.mmDepth, target_framedata.mmCameraMatrix, target_parent_bodypart_transform_inv, _A, _b, true);
-		
-			cv::Mat A64, b64;
-			_A.convertTo(A64, CV_64F);
-			_b.convertTo(b64, CV_64F);
-		
-			cv::add(A, A64, A);
-			cv::add(b, b64, b);
-		
-			//debug
-		
-			cv::Mat x;
-		
-			cv::solve(A64, b64, x, cv::DECOMP_CHOLESKY);
-			float energy = cv::norm(A*x - b);
-			cv::Mat transformDelta = cv::Mat::eye(4, 4, CV_32F);
-		
-			transformDelta.ptr<float>(0)[1] = x.ptr<double>(3)[0];
-			transformDelta.ptr<float>(1)[0] = -x.ptr<double>(3)[0];
-			transformDelta.ptr<float>(0)[2] = -x.ptr<double>(5)[0];
-			transformDelta.ptr<float>(2)[0] = x.ptr<double>(5)[0];
-			transformDelta.ptr<float>(1)[2] = x.ptr<double>(4)[0];
-			transformDelta.ptr<float>(2)[1] = -x.ptr<double>(4)[0];
-			transformDelta.ptr<float>(0)[3] = x.ptr<double>(0)[0];
-			transformDelta.ptr<float>(1)[3] = x.ptr<double>(1)[0];
-			transformDelta.ptr<float>(2)[3] = x.ptr<double>(2)[0];
-			std::cout << "point to point transform: \n" << transformDelta << std::endl;
-		
-			fs << "Point_to_point" << "{"
-				<< "A" << A64
-				<< "b" << b64
-				<< "x" << x
-				<< "transform" << transformDelta
-				<< "}";
-		}
-
-		//skeleton
-		{
-			cv::Mat _A, _b;
-		
-			if (rel_skel){
-				skeleton_constraints_linear(source_node->mTransformation, target_node->mTransformation, 1, 1, _A, _b);
-			}
-			else{
-				skeleton_constraints_linear(source_bodypart_transform, target_bodypart_transform, 1, 1, _A, _b);
-			}
-			cv::Mat A64, b64;
-			_A.convertTo(A64, CV_64F);
-			_b.convertTo(b64, CV_64F);
-		
-			cv::add(A, target_node->confidence * SKELETON_CONSTRAINT_WEIGHT * A64, A);
-			cv::add(b, target_node->confidence * SKELETON_CONSTRAINT_WEIGHT * b64, b);
-		
-			//debug
-		
-			cv::Mat x;
-		
-			cv::solve(A64, b64, x, cv::DECOMP_CHOLESKY);
-			float energy = cv::norm(A*x - b);
-			cv::Mat transformDelta = cv::Mat::eye(4, 4, CV_32F);
-		
-			transformDelta.ptr<float>(0)[1] = x.ptr<double>(3)[0];
-			transformDelta.ptr<float>(1)[0] = -x.ptr<double>(3)[0];
-			transformDelta.ptr<float>(0)[2] = -x.ptr<double>(5)[0];
-			transformDelta.ptr<float>(2)[0] = x.ptr<double>(5)[0];
-			transformDelta.ptr<float>(1)[2] = x.ptr<double>(4)[0];
-			transformDelta.ptr<float>(2)[1] = -x.ptr<double>(4)[0];
-			transformDelta.ptr<float>(0)[3] = x.ptr<double>(0)[0];
-			transformDelta.ptr<float>(1)[3] = x.ptr<double>(1)[0];
-			transformDelta.ptr<float>(2)[3] = x.ptr<double>(2)[0];
-			std::cout << "skeleton transform: \n" << transformDelta << std::endl;
-		
-			fs << "skeleton" << "{"
-				<< "A" << A64
-				<< "b" << b64
-				<< "x" << x
-				<< "transform" << transformDelta
-				<< "}";
-		}
-
-
-		cv::Mat x;
-
-		cv::solve(A, b, x, cv::DECOMP_CHOLESKY);
-		float energy = cv::norm(A*x - b);
-		cv::Mat transformDelta = cv::Mat::eye(4, 4, CV_32F);
-
-		transformDelta.ptr<float>(0)[1] = x.ptr<double>(3)[0];
-		transformDelta.ptr<float>(1)[0] = -x.ptr<double>(3)[0];
-		transformDelta.ptr<float>(0)[2] = -x.ptr<double>(5)[0];
-		transformDelta.ptr<float>(2)[0] = x.ptr<double>(5)[0];
-		transformDelta.ptr<float>(1)[2] = x.ptr<double>(4)[0];
-		transformDelta.ptr<float>(2)[1] = -x.ptr<double>(4)[0];
-		transformDelta.ptr<float>(0)[3] = x.ptr<double>(0)[0];
-		transformDelta.ptr<float>(1)[3] = x.ptr<double>(1)[0];
-		transformDelta.ptr<float>(2)[3] = x.ptr<double>(2)[0];
-
-		{
-			//extract scale and correct it?
-			cv::Vec3f scale(
-				1 / cv::norm(transformDelta(cv::Range(0, 1), cv::Range(0, 3))),
-				1 / cv::norm(transformDelta(cv::Range(1, 2), cv::Range(0, 3))),
-				1 / cv::norm(transformDelta(cv::Range(2, 3), cv::Range(0, 3)))
-				);
-
-			cv::Mat rot = cv::Mat::diag(cv::Mat(scale)) * transformDelta(cv::Range(0, 3), cv::Range(0, 3));
-			rot.copyTo(transformDelta(cv::Range(0, 3), cv::Range(0, 3)));
-		}
-		std::cout << "final transform: \n" << transformDelta << std::endl;
-
-
-		fs << "Final" << "{"
-			<< "A" << A
-			<< "b" << b
-			<< "x" << x
-			<< "transform" << transformDelta
-			<< "}";
-
-		fs.release();
-
-		SkeletonNodeHard * node = source_snhmap.find(bpdv[i].mNode1Name)->second;
-		SkeletonNodeHard * node_parent = source_snhmap.find(node->mParentName)->second;
-
-		if (rel_skel){
-			node->mTransformation = transformDelta * node->mTransformation;
-			cv_draw_and_build_skeleton(node, node_parent->mTempTransformation, source_framedata.mmCameraMatrix, source_framedata.mmCameraPose, &source_snhmap);
-		}
-		else{
-			node->mTempTransformation = transformDelta * node->mTempTransformation;
-			node->mTransformation = node->mTempTransformation * node_parent->mTempTransformation.inv();
-		}
-
-		if (!debug_img.empty()){
-
-			cv::Mat debug_img_volumes = debug_img.clone();
-
-			for (int i = 0; i < bpdv.size(); ++i){
-				cv::Vec3b color(bpdv[i].mColor[2] * 255, bpdv[i].mColor[1] * 255, bpdv[i].mColor[0] * 255);
-				voxel_draw_volume(debug_img_volumes, color, get_bodypart_transform(bpdv[i], source_snhmap, source_framedata.mmCameraPose), source_framedata.mmCameraMatrix, &source_volumes[i], voxel_size);
-			}
+	for(int iter=0;iter<50;++iter){ //straight up lets just do 50 iterations
 
 			ss.str("");
-			ss << "LDTP-debug/debug-frame" << debug_frame << "-bp" << i << ".png";
-			cv::imwrite(ss.str(), debug_img_volumes);
+			cv::FileStorage fs;
+			ss << "LDTP-debug/debug-frame" << debug_frame << "-bp" << i << ".yml";
+			fs.open(ss.str(), cv::FileStorage::WRITE);
 
-			cv::imshow("debug volumes", debug_img_volumes);
-			cv::waitKey(10);
+			const SkeletonNodeHard * source_node = source_snhmap.find(bpdv[i].mNode1Name)->second;
+			const SkeletonNodeHard * target_node = target_snhmap.find(bpdv[i].mNode1Name)->second;
+
+			cv::Mat source_bodypart_transform = get_bodypart_transform(bpdv[i], source_snhmap, source_framedata.mmCameraPose);
+			cv::Mat target_bodypart_transform = get_bodypart_transform(bpdv[i], target_snhmap, target_framedata.mmCameraPose);
+
+			cv::Mat source_bodypart_transform_inv = source_bodypart_transform.inv();
+			cv::Mat target_bodypart_transform_inv = target_bodypart_transform.inv();
+
+			cv::Mat source_screen_transform = source_bodypart_transform * get_voxel_transform(source_volumes[i].width, source_volumes[i].height, source_volumes[i].depth, voxel_size);
+
+			cv::Mat source_bodypart_pointmat;
+			{
+				std::vector<cv::Vec4f> source_points;
+				for (int j = 0; j < source_volumes[i].voxel_data.cols; ++j){
+					if (source_volumes[i].voxel_data.ptr<cv::Vec4b>()[j](3) == 0xff){
+						source_points.push_back(cv::Vec4f(
+							source_volumes[i].voxel_coords.ptr<float>(0)[j],
+							source_volumes[i].voxel_coords.ptr<float>(1)[j],
+							source_volumes[i].voxel_coords.ptr<float>(2)[j],
+							1
+							));
+					}
+				}
+
+				cv::Mat source_bodypart_pointmat_r(1, source_points.size(), CV_32FC4, source_points.data());
+				source_bodypart_pointmat = source_bodypart_pointmat_r.reshape(1, source_bodypart_pointmat_r.cols).t();
+
+				
+				if (source_points.size() > 0){
+					//convert to screen coordinates
+					source_bodypart_pointmat = source_screen_transform * source_bodypart_pointmat;
+				}
+			}
 
 
+			cv::Mat A(6, 6, CV_64F, cv::Scalar(0));
+			cv::Mat b(6, 1, CV_64F, cv::Scalar(0));
+
+
+			//cv::Mat source_parent_bodypart_transform_inv = (source_bodypart_transform * source_node->mTransformation.inv()).inv();
+			//cv::Mat target_parent_bodypart_transform_inv = (target_bodypart_transform * target_node->mTransformation.inv()).inv();
+
+			//point to plane
+			if (!source_bodypart_pointmat.empty())
+			{
+				cv::Mat _A, _b;
+
+				if (false){
+					point_to_plane_registration(source_bodypart_pointmat, source_framedata.mmDepth, source_framedata.mmCameraMatrix, source_bodypart_transform_inv,
+						target_framedata.mmDepth, target_framedata.mmCameraMatrix,
+						target_bodypart_transform_inv, voxel_size, _A, _b, true);
+				}
+				else{
+					//try multiplying the inverse camera pose instead of the body part transform
+					point_to_plane_registration(source_bodypart_pointmat, source_framedata.mmDepth, source_framedata.mmCameraMatrix, source_framedata.mmCameraPose.inv(),
+						target_framedata.mmDepth, target_framedata.mmCameraMatrix,
+						target_framedata.mmCameraPose.inv(), voxel_size, _A, _b, true);
+				}
+				//try multiplying the inverse body part transform of the PARENT //update: not very good...
+
+				//point_to_plane_registration(source_bodypart_pointmat, source_framedata.mmDepth, source_framedata.mmCameraMatrix, source_parent_bodypart_transform_inv,
+				//	target_framedata.mmDepth, target_framedata.mmCameraMatrix,
+				//	target_parent_bodypart_transform_inv, voxel_size, _A, _b, true);
+
+				cv::Mat A64, b64;
+				_A.convertTo(A64, CV_64F);
+				_b.convertTo(b64, CV_64F);
+
+				cv::add(A, A64, A);
+				cv::add(b, b64, b);
+
+				//debug
+
+				cv::Mat x;
+
+				cv::solve(A64, b64, x, cv::DECOMP_CHOLESKY);
+				float energy = cv::norm(A*x - b);
+				cv::Mat transformDelta = cv::Mat::eye(4, 4, CV_32F);
+
+				transformDelta.ptr<float>(0)[1] = x.ptr<double>(3)[0];
+				transformDelta.ptr<float>(1)[0] = -x.ptr<double>(3)[0];
+				transformDelta.ptr<float>(0)[2] = -x.ptr<double>(5)[0];
+				transformDelta.ptr<float>(2)[0] = x.ptr<double>(5)[0];
+				transformDelta.ptr<float>(1)[2] = x.ptr<double>(4)[0];
+				transformDelta.ptr<float>(2)[1] = -x.ptr<double>(4)[0];
+				transformDelta.ptr<float>(0)[3] = x.ptr<double>(0)[0];
+				transformDelta.ptr<float>(1)[3] = x.ptr<double>(1)[0];
+				transformDelta.ptr<float>(2)[3] = x.ptr<double>(2)[0];
+
+				std::cout << "point to plane transform: \n" << transformDelta << std::endl;
+
+				fs << "Point_to_plane" << "{"
+					<< "A" << A64
+					<< "b" << b64
+					<< "x" << x
+					<< "transform" << transformDelta
+					<< "}";
+
+			}
+
+			//point to point
+			//if (!source_bodypart_pointmat.empty())
+			//{
+			//	cv::Mat _A, _b;
+			//
+			//	if (false){
+			//		point_to_point_registration(source_bodypart_pointmat, source_framedata.mmColor, source_framedata.mmDepth, source_framedata.mmCameraMatrix, source_bodypart_transform_inv,
+			//			target_framedata.mmColor, target_framedata.mmDepth, target_framedata.mmCameraMatrix, target_bodypart_transform_inv, _A, _b, true);
+			//	}
+			//	else{
+			//		point_to_point_registration(source_bodypart_pointmat, source_framedata.mmColor, source_framedata.mmDepth, source_framedata.mmCameraMatrix, source_framedata.mmCameraPose.inv(),
+			//			target_framedata.mmColor, target_framedata.mmDepth, target_framedata.mmCameraMatrix, target_framedata.mmCameraPose.inv(), _A, _b, true);
+			//	}
+			//	//point_to_point_registration(source_bodypart_pointmat, source_framedata.mmColor, source_framedata.mmDepth, source_framedata.mmCameraMatrix, source_parent_bodypart_transform_inv,
+			//	//	target_framedata.mmColor, target_framedata.mmDepth, target_framedata.mmCameraMatrix, target_parent_bodypart_transform_inv, _A, _b, true);
+			//
+			//	cv::Mat A64, b64;
+			//	_A.convertTo(A64, CV_64F);
+			//	_b.convertTo(b64, CV_64F);
+			//
+			//	cv::add(A, A64, A);
+			//	cv::add(b, b64, b);
+			//
+			//	//debug
+			//
+			//	cv::Mat x;
+			//
+			//	cv::solve(A64, b64, x, cv::DECOMP_CHOLESKY);
+			//	float energy = cv::norm(A*x - b);
+			//	cv::Mat transformDelta = cv::Mat::eye(4, 4, CV_32F);
+			//
+			//	transformDelta.ptr<float>(0)[1] = x.ptr<double>(3)[0];
+			//	transformDelta.ptr<float>(1)[0] = -x.ptr<double>(3)[0];
+			//	transformDelta.ptr<float>(0)[2] = -x.ptr<double>(5)[0];
+			//	transformDelta.ptr<float>(2)[0] = x.ptr<double>(5)[0];
+			//	transformDelta.ptr<float>(1)[2] = x.ptr<double>(4)[0];
+			//	transformDelta.ptr<float>(2)[1] = -x.ptr<double>(4)[0];
+			//	transformDelta.ptr<float>(0)[3] = x.ptr<double>(0)[0];
+			//	transformDelta.ptr<float>(1)[3] = x.ptr<double>(1)[0];
+			//	transformDelta.ptr<float>(2)[3] = x.ptr<double>(2)[0];
+			//	std::cout << "point to point transform: \n" << transformDelta << std::endl;
+			//
+			//	fs << "Point_to_point" << "{"
+			//		<< "A" << A64
+			//		<< "b" << b64
+			//		<< "x" << x
+			//		<< "transform" << transformDelta
+			//		<< "}";
+			//}
+
+			//skeleton
+			{
+				cv::Mat _A, _b;
+
+				if (rel_skel){
+					skeleton_constraints_linear(source_node->mTransformation, target_node->mTransformation, 1, 1, _A, _b);
+				}
+				else{
+					skeleton_constraints_linear(source_bodypart_transform, target_bodypart_transform, 1, 1, _A, _b);
+				}
+				cv::Mat A64, b64;
+				_A.convertTo(A64, CV_64F);
+				_b.convertTo(b64, CV_64F);
+
+				cv::add(A, target_node->confidence * SKELETON_CONSTRAINT_WEIGHT * A64, A);
+				cv::add(b, target_node->confidence * SKELETON_CONSTRAINT_WEIGHT * b64, b);
+
+				//debug
+
+				cv::Mat x;
+
+				cv::solve(A64, b64, x, cv::DECOMP_CHOLESKY);
+				float energy = cv::norm(A*x - b);
+				cv::Mat transformDelta = cv::Mat::eye(4, 4, CV_32F);
+
+				transformDelta.ptr<float>(0)[1] = x.ptr<double>(3)[0];
+				transformDelta.ptr<float>(1)[0] = -x.ptr<double>(3)[0];
+				transformDelta.ptr<float>(0)[2] = -x.ptr<double>(5)[0];
+				transformDelta.ptr<float>(2)[0] = x.ptr<double>(5)[0];
+				transformDelta.ptr<float>(1)[2] = x.ptr<double>(4)[0];
+				transformDelta.ptr<float>(2)[1] = -x.ptr<double>(4)[0];
+				transformDelta.ptr<float>(0)[3] = x.ptr<double>(0)[0];
+				transformDelta.ptr<float>(1)[3] = x.ptr<double>(1)[0];
+				transformDelta.ptr<float>(2)[3] = x.ptr<double>(2)[0];
+				std::cout << "skeleton transform: \n" << transformDelta << std::endl;
+
+				fs << "skeleton" << "{"
+					<< "A" << A64
+					<< "b" << b64
+					<< "x" << x
+					<< "transform" << transformDelta
+					<< "}";
+			}
+
+
+			cv::Mat x;
+
+			cv::solve(A, b, x, cv::DECOMP_CHOLESKY);
+			float energy = cv::norm(A*x - b);
+			cv::Mat transformDelta = cv::Mat::eye(4, 4, CV_32F);
+
+			transformDelta.ptr<float>(0)[1] = x.ptr<double>(3)[0];
+			transformDelta.ptr<float>(1)[0] = -x.ptr<double>(3)[0];
+			transformDelta.ptr<float>(0)[2] = -x.ptr<double>(5)[0];
+			transformDelta.ptr<float>(2)[0] = x.ptr<double>(5)[0];
+			transformDelta.ptr<float>(1)[2] = x.ptr<double>(4)[0];
+			transformDelta.ptr<float>(2)[1] = -x.ptr<double>(4)[0];
+			transformDelta.ptr<float>(0)[3] = x.ptr<double>(0)[0];
+			transformDelta.ptr<float>(1)[3] = x.ptr<double>(1)[0];
+			transformDelta.ptr<float>(2)[3] = x.ptr<double>(2)[0];
+
+			{
+				//extract scale and correct it?
+				cv::Vec3f scale(
+					1 / cv::norm(transformDelta(cv::Range(0, 1), cv::Range(0, 3))),
+					1 / cv::norm(transformDelta(cv::Range(1, 2), cv::Range(0, 3))),
+					1 / cv::norm(transformDelta(cv::Range(2, 3), cv::Range(0, 3)))
+					);
+
+				cv::Mat rot = cv::Mat::diag(cv::Mat(scale)) * transformDelta(cv::Range(0, 3), cv::Range(0, 3));
+				rot.copyTo(transformDelta(cv::Range(0, 3), cv::Range(0, 3)));
+			}
+			std::cout << "final transform: \n" << transformDelta << std::endl;
+
+
+			fs << "Final" << "{"
+				<< "A" << A
+				<< "b" << b
+				<< "x" << x
+				<< "transform" << transformDelta
+				<< "}";
+
+			fs.release();
+
+			SkeletonNodeHard * node = source_snhmap.find(bpdv[i].mNode1Name)->second;
+			SkeletonNodeHard * node_parent = source_snhmap.find(node->mParentName)->second;
+
+			if (rel_skel){
+				node->mTransformation = transformDelta * node->mTransformation;
+				cv_draw_and_build_skeleton(node, node_parent->mTempTransformation, source_framedata.mmCameraMatrix, source_framedata.mmCameraPose, &source_snhmap);
+			}
+			else{
+				node->mTempTransformation = transformDelta * node->mTempTransformation;
+				node->mTransformation = node->mTempTransformation * node_parent->mTempTransformation.inv();
+			}
+
+			if (!debug_img.empty()){
+
+				cv::Mat debug_img_volumes = debug_img.clone();
+
+				for (int i = 0; i < bpdv.size(); ++i){
+					cv::Vec3b color(bpdv[i].mColor[2] * 255, bpdv[i].mColor[1] * 255, bpdv[i].mColor[0] * 255);
+					voxel_draw_volume(debug_img_volumes, color, get_bodypart_transform(bpdv[i], source_snhmap, source_framedata.mmCameraPose), source_framedata.mmCameraMatrix, &source_volumes[i], voxel_size);
+				}
+
+				ss.str("");
+				ss << "LDTP-debug/debug-frame" << debug_frame << "-bp" << i << ".png";
+				cv::imwrite(ss.str(), debug_img_volumes);
+
+				cv::imshow("debug volumes", debug_img_volumes);
+				cv::waitKey(10);
+
+
+			}
+
+			//break iteration
+			cv::Mat cmp_mat = cv::Mat::eye(4, 4, CV_32F) - transformDelta;
+			cv::Mat i_cmp = cmp_mat(cv::Range(0, 3), cv::Range(0, 1));
+			cv::Mat j_cmp = cmp_mat(cv::Range(0, 3), cv::Range(1, 2));
+			cv::Mat k_cmp = cmp_mat(cv::Range(0, 3), cv::Range(2, 3));
+			cv::Mat t_cmp = cmp_mat(cv::Range(0, 3), cv::Range(3, 4));
+			float diff = cv::norm(i_cmp) + cv::norm(j_cmp) + cv::norm(k_cmp) + cv::norm(t_cmp);
+			if (diff < 0.001) break;
 		}
+
 	}
 
 	++debug_frame;
@@ -468,8 +488,12 @@ int main(int argc, char** argv){
 	}
 
 	std::string video_directory(argv[1]);
+
+	std::string volume_transform_output_directory = video_directory + "/volume_transform/";
+	CreateDirectory(volume_transform_output_directory.c_str(), NULL);
+
 	std::stringstream filenameSS;
-	int startframe = 39;
+	int startframe = 0;
 	int numframes = 200;
 	cv::FileStorage fs;
 
@@ -628,6 +652,11 @@ int main(int argc, char** argv){
 
 			estimate_skeleton_and_transform(bpdv, prev_framedata, framedata_1frame[0], curr_snhmap, snhmap_currframe, volumes, voxel_size, framedata_1frame[0].mmColor);
 		}
+		
+		filenameSS.str("");
+		filenameSS << volume_transform_output_directory << curr_frame + startframe << ".xml.gz";
+
+		save_input_frame(filenameSS.str(), curr_frame_f, framedata_1frame[0].mmCameraPose, framedata_1frame[0].mmCameraMatrix, gen_root, framedata_1frame[0].mmColor, framedata_1frame[0].mmDepth);
 
 		cv::Mat skeleton_image = framedata_1frame[0].mmColor.clone();
 		SkeletonNodeHardMap curr_snhmap;
@@ -648,7 +677,9 @@ int main(int argc, char** argv){
 		cv::Mat camera_extrinsic_inv = framedata_1frame[0].mmCameraPose.inv();
 
 		for (int i = 0; i < bpdv.size(); ++i){
-			integrate_volume(bodypart_transforms[i], voxel_assignments[i], framedata_1frame[0].mmDepth, framedata_1frame[0].mmCameraPose, camera_extrinsic_inv, framedata_1frame[0].mmCameraMatrix, camera_intrinsic_inv, volumes[i], TSDF_array[i], weight_array[i], voxel_size, TSDF_MU, DEPTH_MULTIPLIER);
+			if (get_skeleton_node(bpdv[i], snhmap_currframe)->confidence > 0.8){
+				integrate_volume(bodypart_transforms[i], voxel_assignments[i], framedata_1frame[0].mmDepth, framedata_1frame[0].mmCameraPose, camera_extrinsic_inv, framedata_1frame[0].mmCameraMatrix, camera_intrinsic_inv, volumes[i], TSDF_array[i], weight_array[i], voxel_size, TSDF_MU, DEPTH_MULTIPLIER);
+			}
 		}
 
 		for (int i = 0; i < bpdv.size(); ++i){

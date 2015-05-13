@@ -14,7 +14,7 @@ void calculate_normals(const PointMap& depth_pointmap, const cv::Mat& input_poin
 		int x = input_points_2D.ptr<float>(0)[i];
 		int y = input_points_2D.ptr<float>(1)[i];
 
-		if (!CLAMP(x, y, depth_pointmap.width, depth_pointmap.height)) {
+		if (!CLAMP(x, y, depth_pointmap.width-1, depth_pointmap.height-1)) {
 			std::cout << "Something went wrong (calculate_normals; invalid x/y)\n";
 			continue;
 		}
@@ -95,11 +95,12 @@ void point_to_plane_registration(
 	while (true)
 	{
 
-		const cv::Mat C_2D = projective_data_association(C, cv::Mat::eye(4, 4, CV_32F), source_cameramatrix);
+		const cv::Mat C_2D = projective_data_association(C, source_camerapose_inv*target_camerapose_inv.inv(), source_cameramatrix);
+		//const cv::Mat C_2D = projective_data_association(C, cv::Mat::eye(4, 4, CV_32F), source_cameramatrix);
 
 		cv::Mat D = reproject_depth(C_2D, target_depth, target_cameramatrix);
 
-		C = reproject_depth(C_2D, source_depth, source_cameramatrix); // lets try this? trip report: its bad UPDATE: actually its ok
+		//C = reproject_depth(C_2D, source_depth, source_cameramatrix); // lets try this? trip report: its bad UPDATE: actually its ok
 
 		cv::Mat display_normals(source_depth.rows, source_depth.cols, CV_32FC3, cv::Scalar(0, 0, 0));
 

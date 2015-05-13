@@ -102,7 +102,7 @@ void point_to_point_registration(
 	}
 #endif
 
-	C = reproject_depth(C_2D_t.t(), source_depth, source_cameramatrix); // lets try this? trip report: its bad UPDATE: actually its ok
+	//C = reproject_depth(C_2D_t.t(), source_depth, source_cameramatrix); // lets try this? trip report: its bad UPDATE: actually its ok
 	int point_to_point_matches = 0;
 
 	cv::Mat C_n;

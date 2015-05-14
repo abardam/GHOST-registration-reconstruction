@@ -7,10 +7,46 @@
 //from assimp
 #define AI_DEG_TO_RAD(x) ((x)*0.0174532925f)
 
+typedef std::vector<SkeletonNodeHard> SkeletonNodeAbsoluteVector;
+
+SkeletonNodeHard cmpSNH(const SkeletonNodeHard& a, const SkeletonNodeHard& b){
+	SkeletonNodeHard snh;
+	snh.mTransformation = a.mTransformation - b.mTransformation;
+	for (int i = 0; i < a.mChildren.size(); ++i){
+		snh.mChildren.push_back(cmpSNH(a.mChildren[i], b.mChildren[i]));
+	}
+	snh.mName = a.mName;
+	snh.mParentName = a.mParentName;
+	return snh;
+}
+
+void absolutize_snh(const SkeletonNodeHard& rel, const cv::Mat& parent_transform, std::vector<SkeletonNodeHard>& abs){
+
+	SkeletonNodeHard snh;
+	snh.mTransformation = rel.mTransformation * parent_transform;
+	snh.mName = rel.mName;
+	snh.mParentName = rel.mParentName;
+	abs.push_back(snh);
+	for (int i = 0; i < rel.mChildren.size(); ++i){
+		absolutize_snh(rel.mChildren[i], snh.mTransformation, abs);
+	}
+
+}
+
 SkeletonNodeHard generateFromReference(const SkeletonNodeHard * const ref, const SkeletonNodeHard * const prev){
 	SkeletonNodeHard snh;
-	cv::Mat generatedTransformation = skeleton_constraints_optimize(prev->mTransformation, ref->mTransformation, 1, 1);
+	snh.mTransformation = prev->mTransformation.clone();
 
+	float difference;
+
+	do{
+		cv::Mat generatedTransformation = skeleton_constraints_optimize(snh.mTransformation, ref->mTransformation, 1, 1);
+		snh.mTransformation = generatedTransformation * snh.mTransformation;
+
+		cv::Mat cmpmat = generatedTransformation - cv::Mat::eye(4, 4, CV_32F);
+		difference = cv::norm(cmpmat.col(0)) + cv::norm(cmpmat.col(1)) + cv::norm(cmpmat.col(2)) + cv::norm(cmpmat.col(3));
+
+	} while (difference > 0.00001);
 	//cv::Mat rotationMatrix = generatedTransformation(cv::Range(0, 3), cv::Range(0, 3)) * prev->mTransformation(cv::Range(0, 3), cv::Range(0, 3));
 	//cv::Mat translationMatrix = generatedTransformation(cv::Range(0, 3), cv::Range(3, 4)) + prev->mTransformation(cv::Range(0, 3), cv::Range(3, 4));
 	//
@@ -22,7 +58,6 @@ SkeletonNodeHard generateFromReference(const SkeletonNodeHard * const ref, const
 		snh.mChildren.push_back(generateFromReference(&ref->mChildren[i], &prev->mChildren[i]));
 	}
 
-	snh.mTransformation = generatedTransformation * prev->mTransformation;
 
 	//SVD correct scale error?
 	//cv::SVD genSVD(snh.mTransformation);
@@ -31,9 +66,9 @@ SkeletonNodeHard generateFromReference(const SkeletonNodeHard * const ref, const
 
 	//extract scale and correct it?
 	cv::Vec3f scale(
-		1/cv::norm(snh.mTransformation(cv::Range(0, 1), cv::Range(0, 3))),
-		1/cv::norm(snh.mTransformation(cv::Range(1, 2), cv::Range(0, 3))),
-		1/cv::norm(snh.mTransformation(cv::Range(2, 3), cv::Range(0, 3)))
+		cv::norm(ref->mTransformation(cv::Range(0, 1), cv::Range(0, 3))) / cv::norm(snh.mTransformation(cv::Range(0, 1), cv::Range(0, 3))),
+		cv::norm(ref->mTransformation(cv::Range(1, 2), cv::Range(0, 3))) / cv::norm(snh.mTransformation(cv::Range(1, 2), cv::Range(0, 3))),
+		cv::norm(ref->mTransformation(cv::Range(2, 3), cv::Range(0, 3))) / cv::norm(snh.mTransformation(cv::Range(2, 3), cv::Range(0, 3)))
 		);
 
 	cv::Mat rot = cv::Mat::diag(cv::Mat(scale)) * snh.mTransformation(cv::Range(0, 3), cv::Range(0, 3));
@@ -43,6 +78,46 @@ SkeletonNodeHard generateFromReference(const SkeletonNodeHard * const ref, const
 	snh.mParentName = prev->mParentName;
 
 	return snh;
+}
+
+
+
+SkeletonNodeAbsoluteVector generateFromReference(const SkeletonNodeAbsoluteVector& ref, const SkeletonNodeAbsoluteVector& prev){
+
+	SkeletonNodeAbsoluteVector snav(ref.size());
+
+	for (int i = 0; i < ref.size(); ++i){
+		SkeletonNodeHard snh;
+		snh.mTransformation = prev[i].mTransformation.clone();
+
+		float difference;
+
+		do{
+			cv::Mat generatedTransformation = skeleton_constraints_optimize(snh.mTransformation, ref[i].mTransformation, 1, 1);
+			snh.mTransformation = generatedTransformation * snh.mTransformation;
+
+			cv::Mat cmpmat = generatedTransformation - cv::Mat::eye(4, 4, CV_32F);
+			difference = cv::norm(cmpmat.col(0)) + cv::norm(cmpmat.col(1)) + cv::norm(cmpmat.col(2)) + cv::norm(cmpmat.col(3));
+
+		} while (difference > 0.00001);
+
+
+		//extract scale and correct it?
+		cv::Vec3f scale(
+			cv::norm(ref[i].mTransformation(cv::Range(0, 1), cv::Range(0, 3))) / cv::norm(snh.mTransformation(cv::Range(0, 1), cv::Range(0, 3))),
+			cv::norm(ref[i].mTransformation(cv::Range(1, 2), cv::Range(0, 3))) / cv::norm(snh.mTransformation(cv::Range(1, 2), cv::Range(0, 3))),
+			cv::norm(ref[i].mTransformation(cv::Range(2, 3), cv::Range(0, 3))) / cv::norm(snh.mTransformation(cv::Range(2, 3), cv::Range(0, 3)))
+			);
+
+		cv::Mat rot = cv::Mat::diag(cv::Mat(scale)) * snh.mTransformation(cv::Range(0, 3), cv::Range(0, 3));
+		rot.copyTo(snh.mTransformation(cv::Range(0, 3), cv::Range(0, 3)));
+
+		snh.mName = prev[i].mName;
+		snh.mParentName = prev[i].mParentName;
+		snav[i] = snh;
+	}
+
+	return snav;
 }
 
 int main(int argc, char * argv[]){
@@ -76,12 +151,16 @@ int main(int argc, char * argv[]){
 	logstream_ref.open("transform_log_ref.txt", std::ofstream::out);
 	std::ofstream logstream_svd;
 	logstream_svd.open("transform_log_svd.txt", std::ofstream::out);
+	std::ofstream logstream_cmp;
+	logstream_cmp.open("transform_log_cmp.txt", std::ofstream::out);
 
 	cv::Mat colorMat, camera_extrinsic, camera_intrinsic;
 	SkeletonNodeHardMap snhMap;
+	SkeletonNodeHardMap snhMap2;
 
 	SkeletonNodeHard root;
 	SkeletonNodeHard prevRoot;
+	SkeletonNodeAbsoluteVector prevroot_absolute;
 
 	while (true){
 		filenameSS.str("");
@@ -118,26 +197,30 @@ int main(int argc, char * argv[]){
 
 		fs["skeleton"] >> root;
 
-		SkeletonNodeHard gen_root;
+		std::vector<SkeletonNodeHard> root_absolute;
+		absolutize_snh(root, cv::Mat::eye(4,4,CV_32F), root_absolute);
+
+		SkeletonNodeAbsoluteVector gen_root;
 		if (i>0){
 			for (int i = 0; i < 1; ++i){
-				gen_root = generateFromReference(&root, &prevRoot);
-				prevRoot = gen_root;
+				gen_root = generateFromReference(root_absolute, prevroot_absolute);
+				prevroot_absolute = gen_root;
 			}
 		}
 		else{
-			gen_root = root;
+			gen_root = root_absolute;
 		}
 		
-		logstream_prev << "Frame " << i << std::endl << gen_root << std::endl;
-		logstream_ref << "Frame " << i << std::endl << root << std::endl;
-
-		cv::SVD prevSVD(gen_root.mChildren[0].mChildren[0].mTransformation);
-		cv::SVD refSVD(root.mChildren[0].mChildren[0].mTransformation);
-
-		logstream_svd << "Frame " << i << std::endl <<
-			"Prev: " << std::endl << prevSVD.w << std::endl <<
-			"Ref: " << std::endl << refSVD.w << std::endl;
+		//logstream_prev << "Frame " << i << std::endl << gen_root << std::endl;
+		//logstream_ref << "Frame " << i << std::endl << root << std::endl;
+		//logstream_cmp << "Frame" << i << std::endl << cmpSNH(root, gen_root) << std::endl;
+		//
+		//cv::SVD prevSVD(gen_root.mChildren[0].mChildren[0].mTransformation);
+		//cv::SVD refSVD(root.mChildren[0].mChildren[0].mTransformation);
+		//
+		//logstream_svd << "Frame " << i << std::endl <<
+		//	"Prev: " << std::endl << prevSVD.w << std::endl <<
+		//	"Ref: " << std::endl << refSVD.w << std::endl;
 
 		cv::Mat depth;
 		fs["depth"] >> depth;
@@ -148,13 +231,34 @@ int main(int argc, char * argv[]){
 			depth_color.ptr<cv::Vec3b>()[i] = cv::Vec3b(z % 256, (z / 256) % 256, 0xff);
 		}
 
-		cv_draw_and_build_skeleton(&gen_root, cv::Mat::eye(4,4,CV_32F), camera_intrinsic, camera_extrinsic, &snhMap, depth_color); //change this to colorMat
-		//for (auto it = bpdv.begin(); it != bpdv.end(); ++it){
-		//	cv_draw_volume(*it, colorMat, camera_extrinsic, camera_intrinsic, snhMap);
-		//}
-		snhMap.clear();
+		for (int i = 0; i < gen_root.size(); ++i){
 
-		cv::imshow("color", depth_color); //change this to colorMat
+			cv::Mat zero_pt(cv::Vec4f(0, 0, 0, 1));
+			cv::Mat x_pt(cv::Vec4f(0.1, 0, 0, 1));
+			cv::Mat y_pt(cv::Vec4f(0, 0.1, 0, 1));
+			cv::Mat z_pt(cv::Vec4f(0, 0, 0.1, 1));
+
+			cv::Mat bpt = gen_root[i].mTransformation;
+
+			cv::Mat zero_pt_trans = camera_intrinsic * bpt * zero_pt;
+			cv::Mat x_pt_trans = camera_intrinsic * bpt * x_pt;
+			cv::Mat y_pt_trans = camera_intrinsic * bpt * y_pt;
+			cv::Mat z_pt_trans = camera_intrinsic * bpt * z_pt;
+
+			cv::Point zero_pt_2d(zero_pt_trans.ptr<float>(0)[0] / zero_pt_trans.ptr<float>(2)[0], zero_pt_trans.ptr<float>(1)[0] / zero_pt_trans.ptr<float>(2)[0]);
+			cv::Point x_pt_2d(y_pt_trans.ptr<float>(0)[0] / x_pt_trans.ptr<float>(2)[0], x_pt_trans.ptr<float>(1)[0] / x_pt_trans.ptr<float>(2)[0]);
+			cv::Point y_pt_2d(y_pt_trans.ptr<float>(0)[0] / y_pt_trans.ptr<float>(2)[0], y_pt_trans.ptr<float>(1)[0] / y_pt_trans.ptr<float>(2)[0]);
+			cv::Point z_pt_2d(y_pt_trans.ptr<float>(0)[0] / z_pt_trans.ptr<float>(2)[0], z_pt_trans.ptr<float>(1)[0] / z_pt_trans.ptr<float>(2)[0]);
+
+			cv::line(colorMat, zero_pt_2d, x_pt_2d, cv::Scalar(0xff, 0, 0));
+			cv::line(colorMat, zero_pt_2d, y_pt_2d, cv::Scalar(0, 0xff, 0));
+			cv::line(colorMat, zero_pt_2d, z_pt_2d, cv::Scalar(0, 0, 0xff));
+		}
+
+		snhMap.clear();
+		snhMap2.clear();
+
+		cv::imshow("color", colorMat);
 
 		//cv::Mat depthMat;
 		//fs["depth"] >> depthMat;
@@ -166,7 +270,7 @@ int main(int argc, char * argv[]){
 		cv::waitKey(1);
 		++i;
 
-		prevRoot = gen_root;
+		prevroot_absolute = gen_root;
 	}
 	logstream_prev.close();
 	logstream_ref.close();

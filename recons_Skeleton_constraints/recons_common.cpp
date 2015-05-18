@@ -235,7 +235,7 @@ PointMap fill_image_points(const std::vector<cv::Vec3f>& pts, const cv::Mat& cam
 
 cv::Mat projective_data_association(const cv::Mat& C, const cv::Mat& targetTransform, const cv::Mat& cameraMatrix){
 	int numPts = C.cols;
-	cv::Mat projectedPts = cameraMatrix * targetTransform.inv() * C;
+	cv::Mat projectedPts = cameraMatrix * targetTransform * C;
 	cv::divide(projectedPts(cv::Range(0, 1), cv::Range(0, numPts)), projectedPts(cv::Range(2, 3), cv::Range(0, numPts)), projectedPts(cv::Range(0, 1), cv::Range(0, numPts)));
 	cv::divide(projectedPts(cv::Range(1, 2), cv::Range(0, numPts)), projectedPts(cv::Range(2, 3), cv::Range(0, numPts)), projectedPts(cv::Range(1, 2), cv::Range(0, numPts)));
 

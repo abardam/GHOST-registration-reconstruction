@@ -107,6 +107,7 @@ int main(int argc, char** argv){
 						frameDatas[sourceFrame].mmDepth,
 						frameDatas[sourceFrame].mmCameraMatrix,
 						frameDatas[0].mmCameraPose.inv(),
+						cv::Mat::eye(4,4,CV_32F),
 						frameDatas[targetFrame].mmDepth,
 						frameDatas[targetFrame].mmCameraMatrix,
 						frameDatas[0].mmCameraPose.inv(),

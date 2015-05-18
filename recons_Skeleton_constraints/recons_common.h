@@ -3,6 +3,8 @@
 #include <opencv2\opencv.hpp>
 #include <cv_skeleton.h>
 
+//for point to point and point to plane
+#define MAXIMUM_DEPTH_DIFFERENCE 0.1
 
 //from assimp
 #define AI_DEG_TO_RAD(x) ((x)*0.0174532925f)

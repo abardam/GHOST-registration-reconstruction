@@ -3,8 +3,6 @@
 #include <cv_pointmat_common.h>
 #include <cv_draw_common.h>
 
-#define MAXIMUM_DEPTH_DIFFERENCE 0.1
-
 void calculate_normals(const PointMap& depth_pointmap, const cv::Mat& input_points_2D, cv::Mat& normals, cv::Mat& mDisplayNormals){
 
 	cv::Vec3f half(0.5, 0.5, 0.5);
@@ -15,7 +13,7 @@ void calculate_normals(const PointMap& depth_pointmap, const cv::Mat& input_poin
 		int y = input_points_2D.ptr<float>(1)[i];
 
 		if (!CLAMP(x, y, depth_pointmap.width-1, depth_pointmap.height-1)) {
-			std::cout << "Something went wrong (calculate_normals; invalid x/y)\n";
+			//std::cout << "Something went wrong (calculate_normals; invalid x/y)\n";
 			continue;
 		}
 		
@@ -65,6 +63,7 @@ void point_to_plane_registration(
 	const cv::Mat& source_depth,
 	const cv::Mat& source_cameramatrix,
 	const cv::Mat& source_camerapose_inv,
+	const cv::Mat& source_current_transform_delta,
 	const cv::Mat& target_depth,
 	const cv::Mat& target_cameramatrix,
 	const cv::Mat& target_camerapose_inv,
@@ -95,12 +94,22 @@ void point_to_plane_registration(
 	while (true)
 	{
 
-		const cv::Mat C_2D = projective_data_association(C, source_camerapose_inv*target_camerapose_inv.inv(), source_cameramatrix);
-		//const cv::Mat C_2D = projective_data_association(C, cv::Mat::eye(4, 4, CV_32F), source_cameramatrix);
+		const cv::Mat D_2D = projective_data_association(C, target_camerapose_inv.inv()*source_current_transform_delta*source_camerapose_inv, source_cameramatrix);
+		const cv::Mat C_2D = projective_data_association(C, cv::Mat::eye(4, 4, CV_32F), source_cameramatrix);
 
-		cv::Mat D = reproject_depth(C_2D, target_depth, target_cameramatrix);
+		cv::Mat D = reproject_depth(D_2D, target_depth, target_cameramatrix);
 
-		//C = reproject_depth(C_2D, source_depth, source_cameramatrix); // lets try this? trip report: its bad UPDATE: actually its ok
+		cv::Mat C_temp = reproject_depth(C_2D, source_depth, source_cameramatrix); // lets try this? trip report: its bad UPDATE: actually its ok
+		//assign C_temp to C, if it doesnt exceed the maximum depth difference
+		for (int i = 0; i < C.cols; ++i){
+			float C_depth = C.ptr<float>(2)[i];
+			float C_temp_depth = C_temp.ptr<float>(2)[i];
+			if (abs(C_depth - C_temp_depth) < MAXIMUM_DEPTH_DIFFERENCE){
+				C.ptr<float>(0)[i] = C_temp.ptr<float>(0)[i];
+				C.ptr<float>(1)[i] = C_temp.ptr<float>(1)[i];
+				C.ptr<float>(2)[i] = C_temp.ptr<float>(2)[i];
+			}
+		}
 
 		cv::Mat display_normals(source_depth.rows, source_depth.cols, CV_32FC3, cv::Scalar(0, 0, 0));
 
@@ -155,9 +164,9 @@ void point_to_plane_registration(
 		cv::Mat zerow = cv::Mat::zeros(1, N_n.cols, CV_32F);
 		zerow.copyTo(N_n(cv::Range(3, 4), cv::Range(0, N_n.cols)));
 		
-		cv::Mat transformed_C = source_camerapose_inv * C_n;
+		cv::Mat transformed_C = source_current_transform_delta * source_camerapose_inv * C_n;
 		cv::Mat transformed_D = target_camerapose_inv * D_n;
-		cv::Mat transformed_N = source_camerapose_inv * N_n;
+		cv::Mat transformed_N = source_current_transform_delta * source_camerapose_inv * N_n;
 
 		//cv::Mat transformed_C = C_n;
 		//cv::Mat transformed_D = D_n;

@@ -14,6 +14,7 @@ void point_to_point_registration(
 	const cv::Mat& source_depth,
 	const cv::Mat& source_cameramatrix,
 	const cv::Mat& source_camerapose_inv,
+	const cv::Mat& source_current_transform_delta,
 	const cv::Mat& target_color,
 	const cv::Mat& target_depth,
 	const cv::Mat& target_cameramatrix,

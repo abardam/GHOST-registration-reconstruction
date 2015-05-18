@@ -7,7 +7,6 @@
 //from assimp
 #define AI_DEG_TO_RAD(x) ((x)*0.0174532925f)
 
-typedef std::vector<SkeletonNodeHard> SkeletonNodeAbsoluteVector;
 
 SkeletonNodeHard cmpSNH(const SkeletonNodeHard& a, const SkeletonNodeHard& b){
 	SkeletonNodeHard snh;
@@ -20,18 +19,6 @@ SkeletonNodeHard cmpSNH(const SkeletonNodeHard& a, const SkeletonNodeHard& b){
 	return snh;
 }
 
-void absolutize_snh(const SkeletonNodeHard& rel, const cv::Mat& parent_transform, std::vector<SkeletonNodeHard>& abs){
-
-	SkeletonNodeHard snh;
-	snh.mTransformation = rel.mTransformation * parent_transform;
-	snh.mName = rel.mName;
-	snh.mParentName = rel.mParentName;
-	abs.push_back(snh);
-	for (int i = 0; i < rel.mChildren.size(); ++i){
-		absolutize_snh(rel.mChildren[i], snh.mTransformation, abs);
-	}
-
-}
 
 SkeletonNodeHard generateFromReference(const SkeletonNodeHard * const ref, const SkeletonNodeHard * const prev){
 	SkeletonNodeHard snh;
@@ -198,7 +185,8 @@ int main(int argc, char * argv[]){
 		fs["skeleton"] >> root;
 
 		std::vector<SkeletonNodeHard> root_absolute;
-		absolutize_snh(root, cv::Mat::eye(4,4,CV_32F), root_absolute);
+		absolutize_snh(root, root_absolute);
+
 
 		SkeletonNodeAbsoluteVector gen_root;
 		if (i>0){

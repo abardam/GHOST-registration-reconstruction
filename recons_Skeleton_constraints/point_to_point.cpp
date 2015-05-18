@@ -7,6 +7,7 @@ void point_to_point_registration(
 	const cv::Mat& source_depth,
 	const cv::Mat& source_cameramatrix, 
 	const cv::Mat& source_camerapose_inv,
+	const cv::Mat& source_current_transform_delta,
 	const cv::Mat& target_color, 
 	const cv::Mat& target_depth, 
 	const cv::Mat& target_cameramatrix,
@@ -102,7 +103,19 @@ void point_to_point_registration(
 	}
 #endif
 
-	//C = reproject_depth(C_2D_t.t(), source_depth, source_cameramatrix); // lets try this? trip report: its bad UPDATE: actually its ok
+	cv::Mat C_temp = source_current_transform_delta * reproject_depth(C_2D_t.t(), source_depth, source_cameramatrix); // lets try this? trip report: its bad UPDATE: actually its ok
+
+	//assign C_temp to C, if it doesnt exceed the maximum depth difference
+	for (int i = 0; i < C.cols; ++i){
+		float C_depth = C.ptr<float>(2)[i];
+		float C_temp_depth = C_temp.ptr<float>(2)[i];
+		if (abs(C_depth - C_temp_depth) < MAXIMUM_DEPTH_DIFFERENCE){
+			C.ptr<float>(0)[i] = C_temp.ptr<float>(0)[i];
+			C.ptr<float>(1)[i] = C_temp.ptr<float>(1)[i];
+			C.ptr<float>(2)[i] = C_temp.ptr<float>(2)[i];
+		}
+	}
+
 	int point_to_point_matches = 0;
 
 	cv::Mat C_n;

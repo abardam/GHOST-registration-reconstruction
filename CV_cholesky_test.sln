@@ -31,6 +31,12 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "separate_parts_test", "sepa
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "load_depth_test_parts", "load_depth_test_parts\load_depth_test_parts.vcxproj", "{78809CCF-301F-45FC-9828-C8268A754AAC}"
 	ProjectSection(ProjectDependencies) = postProject
+		{060CBC97-2EEA-4379-9AF3-F38325B17640} = {060CBC97-2EEA-4379-9AF3-F38325B17640}
+		{82C579F8-E53C-4C5A-A2E0-FA3C19132975} = {82C579F8-E53C-4C5A-A2E0-FA3C19132975}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "recons_registration", "recons_registration\recons_registration.vcxproj", "{060CBC97-2EEA-4379-9AF3-F38325B17640}"
+	ProjectSection(ProjectDependencies) = postProject
 		{82C579F8-E53C-4C5A-A2E0-FA3C19132975} = {82C579F8-E53C-4C5A-A2E0-FA3C19132975}
 	EndProjectSection
 EndProject
@@ -72,6 +78,10 @@ Global
 		{78809CCF-301F-45FC-9828-C8268A754AAC}.Debug|Win32.Build.0 = Debug|Win32
 		{78809CCF-301F-45FC-9828-C8268A754AAC}.Release|Win32.ActiveCfg = Release|Win32
 		{78809CCF-301F-45FC-9828-C8268A754AAC}.Release|Win32.Build.0 = Release|Win32
+		{060CBC97-2EEA-4379-9AF3-F38325B17640}.Debug|Win32.ActiveCfg = Debug|Win32
+		{060CBC97-2EEA-4379-9AF3-F38325B17640}.Debug|Win32.Build.0 = Debug|Win32
+		{060CBC97-2EEA-4379-9AF3-F38325B17640}.Release|Win32.ActiveCfg = Release|Win32
+		{060CBC97-2EEA-4379-9AF3-F38325B17640}.Release|Win32.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

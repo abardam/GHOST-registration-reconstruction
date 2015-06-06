@@ -163,6 +163,7 @@ void load_frames(const std::vector<std::string>& filepaths, std::vector<PointMap
 		}
 
 		fs["camera_extrinsic"] >> frameData.mmCameraPose;
+		fs["facing"] >> frameData.mnFacing;
 
 		fs.release();
 		//prepare frame data(i.e. calculate normals and matrixify points)

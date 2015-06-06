@@ -103,18 +103,23 @@ void point_to_point_registration(
 	}
 #endif
 
-	cv::Mat C_temp = source_current_transform_delta * reproject_depth(C_2D_t.t(), source_depth, source_cameramatrix); // lets try this? trip report: its bad UPDATE: actually its ok
+	{
+		cv::Mat C_temp = reproject_depth(C_2D_t.t(), source_depth, source_cameramatrix); // lets try this? trip report: its bad UPDATE: actually its ok
 
-	//assign C_temp to C, if it doesnt exceed the maximum depth difference
-	for (int i = 0; i < C.cols; ++i){
-		float C_depth = C.ptr<float>(2)[i];
-		float C_temp_depth = C_temp.ptr<float>(2)[i];
-		if (abs(C_depth - C_temp_depth) < MAXIMUM_DEPTH_DIFFERENCE){
-			C.ptr<float>(0)[i] = C_temp.ptr<float>(0)[i];
-			C.ptr<float>(1)[i] = C_temp.ptr<float>(1)[i];
-			C.ptr<float>(2)[i] = C_temp.ptr<float>(2)[i];
+		//assign C_temp to C, if it doesnt exceed the maximum depth difference
+		for (int i = 0; i < C.cols; ++i){
+			float C_depth = C.ptr<float>(2)[i];
+			float C_temp_depth = C_temp.ptr<float>(2)[i];
+			//if (abs(C_depth - C_temp_depth) < MAXIMUM_DEPTH_DIFFERENCE){
+			if (true){
+				C.ptr<float>(0)[i] = C_temp.ptr<float>(0)[i];
+				C.ptr<float>(1)[i] = C_temp.ptr<float>(1)[i];
+				C.ptr<float>(2)[i] = C_temp.ptr<float>(2)[i];
+			}
 		}
 	}
+
+	C = source_current_transform_delta * C;
 
 	int point_to_point_matches = 0;
 
@@ -124,10 +129,13 @@ void point_to_point_registration(
 	for (int i = 0; i < C.cols; ++i){
 		//if (D.ptr<float>(2)[i] < 0 && //TODO. figure this shit out
 		//if (D.ptr<float>(2)[i] > 0 &&
-		if (D.ptr<float>(2)[i] != 0 &&
-			C.ptr<float>(2)[i] != 0 &&
-			status[i] == 1 &&
-			error[i] < OPTICAL_FLOW_ERROR_THRESHOLD){
+		if (D.ptr<float>(2)[i] != 0 
+			&& C.ptr<float>(2)[i] != 0 
+			&& status[i] == 1 
+			&& error[i] < OPTICAL_FLOW_ERROR_THRESHOLD
+			&& abs(D.ptr<float>(2)[i] - C.ptr<float>(2)[i]) < MAXIMUM_DEPTH_DIFFERENCE //band-aid solution for wild depth differences; TODO. fix
+			&& abs(source_pointmat.ptr<float>(2)[i] - C.ptr<float>(2)[i]) < MAXIMUM_DEPTH_DIFFERENCE //band-aid solution for wild depth differences; TODO. fix
+			){
 			++point_to_point_matches;
 			C_n.push_back(C.col(i));
 			D_n.push_back(D.col(i));

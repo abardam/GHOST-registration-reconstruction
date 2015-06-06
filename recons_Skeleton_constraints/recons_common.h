@@ -31,6 +31,7 @@ struct FrameData{
 	cv::Mat mmCameraMatrix;
 	cv::Mat mmCameraPose;
 	SkeletonNodeHard mmRoot;
+	int mnFacing;
 	int width, height;
 
 	FrameData(){};

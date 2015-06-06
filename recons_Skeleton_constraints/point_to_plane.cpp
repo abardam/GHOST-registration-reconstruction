@@ -104,7 +104,8 @@ void point_to_plane_registration(
 		for (int i = 0; i < C.cols; ++i){
 			float C_depth = C.ptr<float>(2)[i];
 			float C_temp_depth = C_temp.ptr<float>(2)[i];
-			if (abs(C_depth - C_temp_depth) < MAXIMUM_DEPTH_DIFFERENCE){
+			//if (abs(C_depth - C_temp_depth) < MAXIMUM_DEPTH_DIFFERENCE){
+			if (true){
 				C.ptr<float>(0)[i] = C_temp.ptr<float>(0)[i];
 				C.ptr<float>(1)[i] = C_temp.ptr<float>(1)[i];
 				C.ptr<float>(2)[i] = C_temp.ptr<float>(2)[i];

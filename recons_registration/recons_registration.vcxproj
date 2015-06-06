@@ -11,18 +11,18 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{78809CCF-301F-45FC-9828-C8268A754AAC}</ProjectGuid>
-    <RootNamespace>load_depth_test_parts</RootNamespace>
+    <ProjectGuid>{060CBC97-2EEA-4379-9AF3-F38325B17640}</ProjectGuid>
+    <RootNamespace>recons_registration</RootNamespace>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
-    <ConfigurationType>Application</ConfigurationType>
+    <ConfigurationType>StaticLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v120</PlatformToolset>
     <CharacterSet>MultiByte</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
-    <ConfigurationType>Application</ConfigurationType>
+    <ConfigurationType>StaticLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v120</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
@@ -33,24 +33,28 @@
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-    <Import Project="$(PROPERTY_SHEETS_DIR)\OpenCV_debug.props" />
-    <Import Project="$(PROPERTY_SHEETS_DIR)\CvDraw_debug.props" />
-    <Import Project="$(PROPERTY_SHEETS_DIR)\ReconsOptimization_debug.props" />
-    <Import Project="$(PROPERTY_SHEETS_DIR)\ReconsVoxel_debug.props" />
     <Import Project="$(PROPERTY_SHEETS_DIR)\CvSkeleton_debug.props" />
-    <Import Project="$(PROPERTY_SHEETS_DIR)\ReconsRegistration_debug.props" />
+    <Import Project="$(PROPERTY_SHEETS_DIR)\CvDraw_debug.props" />
+    <Import Project="$(PROPERTY_SHEETS_DIR)\OpenCV_debug.props" />
+    <Import Project="$(PROPERTY_SHEETS_DIR)\ReconsVoxel_debug.props" />
+    <Import Project="$(PROPERTY_SHEETS_DIR)\ReconsOptimization_debug.props" />
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-    <Import Project="$(PROPERTY_SHEETS_DIR)\OpenCV.props" />
-    <Import Project="$(PROPERTY_SHEETS_DIR)\CvDraw.props" />
-    <Import Project="$(PROPERTY_SHEETS_DIR)\ReconsOptimization.props" />
-    <Import Project="$(PROPERTY_SHEETS_DIR)\ReconsVoxel.props" />
     <Import Project="$(PROPERTY_SHEETS_DIR)\CvSkeleton.props" />
-    <Import Project="$(PROPERTY_SHEETS_DIR)\ReconsRegistration.props" />
+    <Import Project="$(PROPERTY_SHEETS_DIR)\CvDraw.props" />
+    <Import Project="$(PROPERTY_SHEETS_DIR)\OpenCV.props" />
+    <Import Project="$(PROPERTY_SHEETS_DIR)\ReconsVoxel.props" />
+    <Import Project="$(PROPERTY_SHEETS_DIR)\ReconsOptimization.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
-  <PropertyGroup />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <TargetName>$(ProjectName)d</TargetName>
+    <OutDir>$(CODE_DIR)\ReconsRegistration-x86-vs12\lib</OutDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <OutDir>$(CODE_DIR)\ReconsRegistration-x86-vs12\lib</OutDir>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
@@ -61,6 +65,9 @@
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <PreBuildEvent>
+      <Command>mkdir "$(CODE_DIR)\ReconsRegistration-x86-vs12\include\" &amp; copy /y "$(ProjectDir)\*.h" "$(CODE_DIR)\ReconsRegistration-x86-vs12\include\"</Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -76,9 +83,15 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
     </Link>
+    <PreBuildEvent>
+      <Command>mkdir "$(CODE_DIR)\ReconsRegistration-x86-vs12\include\" &amp; copy /y "$(ProjectDir)\*.h" "$(CODE_DIR)\ReconsRegistration-x86-vs12\include\"</Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="Source.cpp" />
+    <ClCompile Include="recons_registration.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="recons_registration.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

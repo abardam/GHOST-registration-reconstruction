@@ -12,12 +12,12 @@
 #define NEGATIVE_DEPTH 1 //TODO. figure this out
 
 //KINECT
-#define CYLINDER_FITTING_THRESHOLD 0.1
+#define CYLINDER_FITTING_THRESHOLD 0.01
 #define CYLINDER_FITTING_RADIUS_MAX 0.3
-#define CYLINDER_FITTING_RADIUS_INC 0.05
+#define CYLINDER_FITTING_RADIUS_INC 0.01
 #define VOXEL_SIZE 0.01
 #define DEPTH_MULTIPLIER -1
-#define TSDF_MU 0.001
+#define TSDF_MU 0.1
 
 //ASSIMP
 //#define CYLINDER_FITTING_THRESHOLD 0.4
@@ -185,7 +185,7 @@ int main(int argc, char** argv){
 
 	std::stringstream filenameSS;
 	int startframe = 0;
-	int numframes = 200;
+	int numframes = 1000;
 	cv::FileStorage fs;
 
 	if (argc >= 3){
@@ -257,6 +257,7 @@ int main(int argc, char** argv){
 	float curr_frame_f = 0;
 
 	SkeletonNodeAbsoluteVector snav_prev;
+	SkeletonNodeHard relroot_prev;
 
 	cv::Mat camera_matrix_prev, camera_pose_prev;
 	cv::Mat color_prev, depth_prev;
@@ -277,7 +278,7 @@ int main(int argc, char** argv){
 	while (curr_frame_f < filenames.size()){
 		unsigned int curr_frame = curr_frame_f;
 
-		SkeletonNodeHard relroot_load;
+		SkeletonNodeHard relroot_load, relroot_gen;
 		SkeletonNodeAbsoluteVector snav_load, snav_gen;
 
 		double time;
@@ -310,6 +311,7 @@ int main(int argc, char** argv){
 			camera_mats.push_back(camera_matrix_load);
 
 			snav_gen = snav_load;
+			relroot_gen = relroot_load;
 
 			PointMap pointMap(width, height);
 			read_depth_image(depth_load, camera_matrix_load, pointMap);
@@ -317,7 +319,7 @@ int main(int argc, char** argv){
 			read_points_pointcloud(pointMap, pointmat);
 
 			cylinder_fitting(bpdv, snav_load, pointmat, camera_pose_load, cylinders, CYLINDER_FITTING_RADIUS_INC, CYLINDER_FITTING_RADIUS_MAX, CYLINDER_FITTING_THRESHOLD, &volume_sizes
-				);// , &camera_matrix_load, &width, &height);
+				);//, &camera_matrix_load, &width, &height);
 			init_voxel_set(bpdv, snav_load, cylinders, camera_pose_load, volumes, volume_sizes, voxelmap, voxel_size);
 			
 
@@ -331,6 +333,7 @@ int main(int argc, char** argv){
 		}
 		else if (facing == FACING_SIDE || facing_prev == FACING_SIDE){
 			snav_gen = snav_load;
+			relroot_gen = relroot_load;
 			//snav_gen = snav_prev;
 			//
 			//cv::Mat depth_as_color_1;
@@ -350,6 +353,7 @@ int main(int argc, char** argv){
 			//*get_bodypart_skeleton_node("LOWER LEG LEFT", bpdv, snav_gen) = *get_bodypart_skeleton_node("LOWER LEG LEFT", bpdv, snav_load);
 		}
 		else if (facing == FACING_SIDE_BACK || facing_prev == FACING_SIDE_BACK){
+			relroot_gen = relroot_load;
 			snav_gen = snav_load;
 			//snav_gen = snav_prev;
 			//
@@ -371,6 +375,7 @@ int main(int argc, char** argv){
 			//*get_bodypart_skeleton_node("LOWER LEG LEFT", bpdv, snav_gen) = *get_bodypart_skeleton_node("LOWER LEG LEFT", bpdv, snav_load);
 		}
 		else{
+			relroot_gen = relroot_prev;
 
 			snav_gen = snav_prev;
 			//bg_transform_delta = estimate_background_transform_multi(depth_load, fullcolor_load, camera_matrix_load, depth_mats, rgb_mats, camera_mats, camera_poses);
@@ -381,7 +386,13 @@ int main(int argc, char** argv){
 			cv::Mat depth_as_color_3;
 			cv::cvtColor(depth_as_color_1, depth_as_color_3, CV_GRAY2BGR);
 
+			//SkeletonNodeHardMap snh_gen, snh_load;
+			//cv_draw_and_build_skeleton(&relroot_gen, cv::Mat::eye(4, 4, CV_32F), camera_matrix_load, camera_pose_load, &snh_gen);
+			//cv_draw_and_build_skeleton(&relroot_load, cv::Mat::eye(4, 4, CV_32F), camera_matrix_load, camera_pose_load, &snh_load);
+			
+
 			estimate_skeleton_and_transform(bpdv, camera_matrix_prev, camera_pose_prev, color_prev, depth_prev, camera_matrix_load, camera_pose_load, color_load, depth_load, snav_gen, snav_load, volumes, voxel_size, depth_as_color_3);
+			//estimate_skeleton_and_transform(bpdv, camera_matrix_prev, camera_pose_prev, color_prev, depth_prev, camera_matrix_load, camera_pose_load, color_load, depth_load, snh_gen, snh_load, volumes, voxel_size, depth_as_color_3);
 		}
 
 		depth_mats.pop_back();
@@ -394,6 +405,7 @@ int main(int argc, char** argv){
 
 		SkeletonNodeHard root_rel;
 		relativize_snh(snav_gen, root_rel);
+		//root_rel = relroot_gen;
 
 		save_input_frame(filenameSS.str(), curr_frame_f, camera_pose_load, camera_matrix_load, root_rel, color_load, fullcolor_load, depth_load, facing);
 
@@ -443,6 +455,7 @@ int main(int argc, char** argv){
 
 		cv::waitKey(20);
 		snav_prev = snav_gen;
+		relroot_prev = relroot_gen;
 
 		camera_pose_prev = camera_pose_load;
 		camera_matrix_prev = camera_matrix_load;

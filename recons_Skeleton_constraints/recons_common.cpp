@@ -53,19 +53,22 @@ void read_depth_image(const cv::Mat& depthMat, const cv::Mat& camera_intrinsic, 
 	cv::Mat camera_intrinsic_inv = camera_intrinsic.inv();
 	for (int y = 0; y < depthMat.rows; ++y){
 		for (int x = 0; x < depthMat.cols; ++x){
-			cv::Vec4f projectedPt(x, y, 1, 1);
+			//cv::Vec4f projectedPt(x, y, 1, 1);
 
 			float depth = depthMat.ptr<float>(y)[x];
 
 			if (abs(depth) > FLT_EPSILON){
 
-				cv::Mat reprojectedPt_m = depth * camera_intrinsic_inv * cv::Mat(projectedPt);
+				//cv::Mat reprojectedPt_m = depth * camera_intrinsic_inv * cv::Mat(projectedPt);
 
 				cv::Vec3f pt3;
 
-				pt3(0) = reprojectedPt_m.ptr<float>(0)[0];
-				pt3(1) = reprojectedPt_m.ptr<float>(1)[0];
-				pt3(2) = reprojectedPt_m.ptr<float>(2)[0];
+				//pt3(0) = reprojectedPt_m.ptr<float>(0)[0];
+				//pt3(1) = reprojectedPt_m.ptr<float>(1)[0];
+				//pt3(2) = reprojectedPt_m.ptr<float>(2)[0];
+				pt3(0) = depth * (camera_intrinsic_inv.ptr<float>(0)[0] * x + camera_intrinsic_inv.ptr<float>(0)[1] * y + camera_intrinsic_inv.ptr<float>(0)[2]);
+				pt3(1) = depth * (camera_intrinsic_inv.ptr<float>(1)[0] * x + camera_intrinsic_inv.ptr<float>(1)[1] * y + camera_intrinsic_inv.ptr<float>(1)[2]);
+				pt3(2) = depth * (camera_intrinsic_inv.ptr<float>(2)[0] * x + camera_intrinsic_inv.ptr<float>(2)[1] * y + camera_intrinsic_inv.ptr<float>(2)[2]);
 
 				pointMap.mvPoints[y * depthMat.cols + x] = pt3;
 				pointMap.mvPointLocations.push_back(std::pair<int, int>(x, y));

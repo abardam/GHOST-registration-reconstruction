@@ -2,6 +2,8 @@
 #include "opencv2\opencv.hpp"
 #include "recons_common.h"
 
+#define POINT_TO_PLANE_THRESHOLD 40
+
 //calculates the normal at each pixel. if mDisplayNormals is provided, returns the normals mapped to color
 void calculate_normals(const PointMap& depth_pointmap, const cv::Mat& input_points_2D, cv::Mat& normals, cv::Mat& mDisplayNormals = cv::Mat());
 

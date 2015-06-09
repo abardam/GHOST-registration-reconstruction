@@ -3,7 +3,7 @@
 #include "recons_common.h"
 
 #define OPTICAL_FLOW_ERROR_THRESHOLD 15
-#define OPTICAL_FLOW_MIN_MATCHES 30
+#define OPTICAL_FLOW_MIN_MATCHES 40
 
 void point_to_point_linear(const cv::Mat& C, const cv::Mat& D, cv::Mat& out_A, cv::Mat& out_b);
 cv::Mat point_to_point_optimize(const cv::Mat& C, const cv::Mat& D);

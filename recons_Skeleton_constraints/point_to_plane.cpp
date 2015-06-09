@@ -148,7 +148,7 @@ void point_to_plane_registration(
 			}
 		}
 
-		if (point_to_plane_matches == 0){
+		if (point_to_plane_matches < POINT_TO_PLANE_THRESHOLD){
 			A = cv::Mat::zeros(6, 6, CV_64F);
 			b = cv::Mat::zeros(6, 1, CV_64F);
 			return;
